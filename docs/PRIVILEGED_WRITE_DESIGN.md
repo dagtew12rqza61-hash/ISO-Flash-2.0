@@ -29,6 +29,7 @@ The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.
 - Re-check mounts, swap, holders, and topology immediately before the first write.
 - Validate the image descriptor as a regular file, capture its size, hash it, and reject an empty or changing source.
 - Use bounded write loops, handle short writes and EINTR, sync at defined checkpoints, and verify read-back data.
+- Treat ENODEV/ENXIO during open, fstat, ioctl, write, or sync as a terminal device-loss event; stop scheduling writes, never retry against a newly resolved pathname, preserve the original descriptor identity in the job result, and report that the target may contain a partially written image.
 - Keep all destructive operations in the service; expose only typed D-Bus methods and progress signals.
 - Test with disposable loop devices and fault injection. CI must never write to host physical disks.
 
@@ -38,4 +39,4 @@ The service should be installed root-owned and non-writable by unprivileged user
 
 ## Current implementation status
 
-The read-only D-Bus service and systemd activation are implemented. The Polkit write policy, descriptor-passing write request, writable device open, asynchronous job manager, and physical write path are not implemented. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
+The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit write policy, descriptor-passing write request, writable device open, asynchronous job manager, and physical write path are not implemented. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
