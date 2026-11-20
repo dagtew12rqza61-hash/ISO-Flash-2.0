@@ -48,15 +48,16 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
         return;
     }
 
-    const gchar* subject_kind = nullptr;
-    GVariant* subject_details = nullptr;
+    GVariant* subject = nullptr;
     const gchar* action = nullptr;
     GVariant* details = nullptr;
     guint32 flags = 0;
     const gchar* cancellation_id = nullptr;
-    g_variant_get(parameters, "(&s@a{sv}&s@a{ss}u&s)",
-                  &subject_kind, &subject_details, &action, &details,
-                  &flags, &cancellation_id);
+    g_variant_get(parameters, "(@(sa{sv})&s@a{ss}u&s)",
+                  &subject, &action, &details, &flags, &cancellation_id);
+    const gchar* subject_kind = nullptr;
+    GVariant* subject_details = nullptr;
+    g_variant_get(subject, "(&s@a{sv})", &subject_kind, &subject_details);
     const gchar* sender = nullptr;
     const bool valid_subject =
         g_strcmp0(subject_kind, "system-bus-name") == 0 &&
@@ -66,6 +67,7 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
         flags == 1U && cancellation_id != nullptr &&
         cancellation_id[0] == '\0';
     g_variant_unref(subject_details);
+    g_variant_unref(subject);
     g_variant_unref(details);
     if (!valid_subject) {
         g_dbus_method_invocation_return_error(
