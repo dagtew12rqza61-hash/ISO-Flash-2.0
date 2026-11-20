@@ -34,6 +34,12 @@ target_include_directories(image_source_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/
 target_compile_options(image_source_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME image_source_rejects_invalid_or_changed_iso_descriptors COMMAND image_source_test)
 
+add_executable(image_hash_test image_hash.cpp)
+target_include_directories(image_hash_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_link_libraries(image_hash_test PRIVATE PkgConfig::GIO)
+target_compile_options(image_hash_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME image_hash_verifies_sha256_and_rejects_source_mutation COMMAND image_hash_test)
+
 add_executable(device_io_test device_io.cpp)
 target_include_directories(device_io_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(device_io_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
