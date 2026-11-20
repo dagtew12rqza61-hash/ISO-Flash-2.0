@@ -3,7 +3,7 @@
 #include <gio/gio.h>
 
 #include <exception>
-#include <string>
+#include <string>\n#include <sys/sysmacros.h>
 
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
@@ -50,8 +50,16 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
                                ":" + std::to_string(device_minor);
     std::string error;
     std::uint64_t capacity_bytes = 0;
+    const dev_t expected_device_number = makedev(device_major, device_minor);
+    if (major(expected_device_number) != device_major ||
+        minor(expected_device_number) != device_minor) {
+        g_dbus_method_invocation_return_value(
+            invocation, g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                                      "Block-device major/minor is out of range"));
+        return;
+    }
     const bool accepted =
-        inspect_target_read_only(device, error, capacity_bytes);
+        inspect_target_read_only(device, error, capacity_bytes, expected_device_number);
 
     g_dbus_method_invocation_return_value(
         invocation,
