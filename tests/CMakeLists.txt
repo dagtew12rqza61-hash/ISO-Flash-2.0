@@ -31,3 +31,8 @@ add_executable(device_io_test device_io.cpp)
 target_include_directories(device_io_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(device_io_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME device_io_handles_open_failures_and_closes_descriptors COMMAND device_io_test)
+
+add_executable(device_error_test device_error.cpp)
+target_include_directories(device_error_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(device_error_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME device_error_reports_disconnect_and_media_state COMMAND device_error_test)
