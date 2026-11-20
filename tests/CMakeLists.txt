@@ -7,6 +7,7 @@ set(ISO_FLASH_TESTS
   device_error
   device_io
   device_snapshot
+  image_fd_validation
   image_hash
   image_source
   image_validation
@@ -27,7 +28,7 @@ foreach(test_name IN LISTS ISO_FLASH_TESTS)
   target_include_directories(test_${test_name} PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
   target_link_libraries(test_${test_name} PRIVATE Threads::Threads)
   target_compile_options(test_${test_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
-  if(test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation")
+  if(test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation" OR test_name STREQUAL "image_fd_validation")
     target_link_libraries(test_${test_name} PRIVATE PkgConfig::GLIB)
   endif()
   add_test(NAME ${test_name} COMMAND test_${test_name})
