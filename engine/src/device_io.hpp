@@ -1,5 +1,7 @@
 #pragma once
 
+#include "device_error.hpp"
+
 #include <cerrno>
 #include <fcntl.h>
 #include <string>
@@ -51,9 +53,14 @@ private:
 template <typename OpenFunction>
 bool open_target_read_only(const std::string& path, int& fd, std::string& error,
                            OpenFunction&& open_function) {
-    fd = open_function(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    fd = -1;
+    do {
+        fd = open_function(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    } while (fd < 0 && errno == EINTR);
+
     if (fd < 0) {
-        error = "Cannot open target read-only";
+        const int open_error = errno;
+        error = describe_device_error("Cannot open target read-only", open_error);
         return false;
     }
     return true;
