@@ -74,8 +74,9 @@ int main() {
     injected_errno = ENODEV;
     error.clear();
     if (iso_flash::read_device_snapshot(7, captured, error, fake_fstat, fake_ioctl) ||
-        error.empty()) {
-        std::cerr << "Disconnected device metadata read was not rejected\n";
+        error.find("disconnected or is no longer available") == std::string::npos ||
+        captured.capacity_bytes != 0) {
+        std::cerr << "Disconnected device metadata read was not diagnosed: " << error << '\n';
         return 1;
     }
 
@@ -84,8 +85,8 @@ int main() {
     injected_errno = EIO;
     error.clear();
     if (iso_flash::read_device_snapshot(7, captured, error, fake_fstat, fake_ioctl) ||
-        error.empty()) {
-        std::cerr << "Capacity read error was not rejected\n";
+        error.find("device I/O error") == std::string::npos) {
+        std::cerr << "Capacity read error was not diagnosed: " << error << '\n';
         return 1;
     }
 
@@ -93,8 +94,8 @@ int main() {
     injected_errno = ENODEV;
     error.clear();
     if (iso_flash::read_device_snapshot(7, captured, error, fake_fstat, fake_ioctl) ||
-        error.empty()) {
-        std::cerr << "Device disconnect during read-only query was not rejected\n";
+        error.find("disconnected or is no longer available") == std::string::npos) {
+        std::cerr << "Device disconnect during read-only query was not diagnosed: " << error << '\n';
         return 1;
     }
 
