@@ -84,7 +84,7 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
         if (fd_list == nullptr) {
             g_dbus_method_invocation_return_value(
                 invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0), "",
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
                               "D-Bus request did not include a Unix file descriptor list"));
             return;
         }
@@ -97,7 +97,7 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
             if (error != nullptr) g_error_free(error);
             g_dbus_method_invocation_return_value(
                 invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0), "",
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
                               reason.c_str()));
             return;
         }
@@ -106,7 +106,7 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
         const auto validation = iso_flash::validate_image_fd(owned_fd.get());
         g_dbus_method_invocation_return_value(
             invocation,
-            g_variant_new("(bts)", validation.valid,
+            g_variant_new("(btss)", validation.valid,
                           static_cast<guint64>(validation.bytes_hashed),
                           validation.sha256.c_str(),
                           validation.valid ? "" : validation.reason.c_str()));
