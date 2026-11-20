@@ -37,6 +37,80 @@ The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.
 
 The service should be installed root-owned and non-writable by unprivileged users. The D-Bus system service file should start a dedicated executable with a fixed path and restrictive systemd sandboxing where supported. The Polkit policy should define only `org.iso_flash.write`, default to authorization for an active local session, and require authentication. No wildcard actions, arbitrary command execution, user-provided helper paths, or environment-controlled executable paths are allowed.
 
+## Polkit authorization policy (packaged, not yet enforced by a write method)
+
+The engine package now installs `packaging/polkit/org.iso_flash.policy` as
+`/usr/share/polkit-1/actions/org.iso_flash.policy`. It defines exactly one
+action, `org.iso_flash.write`. Any subject is denied by default; active and
+inactive sessions require administrator authentication (`auth_admin`). The
+policy is intentionally restrictive and is covered by a CMake contract test
+and the Debian package smoke test.
+
+This policy file alone does not authorize or enable writes. The running D-Bus
+service still exports no `StartWrite` method and does not call Polkit. When
+that method is implemented, authorization must be checked asynchronously for
+every request using the invocation's unique D-Bus sender as a
+`PolkitSystemBusName` subject. Do not trust a UID, username, PID, or session
+identifier supplied as a method argument. Use only the fixed action ID
+`org.iso_flash.write`, allow interactive authentication, bind the check to
+the request's cancellation lifecycle, and fail closed on Polkit errors,
+missing sender identity, timeout, or caller disconnect. Do not cache approval
+in the GUI or reuse an earlier request's authorization. Revalidate the target
+after authorization because the device may change while the authentication
+dialog is open.
+
+## Writable target descriptor admission (design only)
+
+The current `OpenedTarget` helper remains read-only. The future writer must
+not change it into a permissive path-based open. Add a separate move-only
+writable-target type whose descriptor is created and owned only by the root
+D-Bus service. The client sends major/minor numbers, never a path.
+
+Resolve the requested identity through `/sys/dev/block/MAJOR:MINOR`, obtain
+the kernel-reported `DEVNAME` from that exact sysfs device's uevent metadata,
+and reject empty names, slash-containing names, dot components, or any value
+that is not a single device-node basename. Construct only `/dev/DEVNAME`;
+never accept a client-provided path or follow `/dev/disk/by-*` aliases. Use
+`lstat` to require a real block-device node (not a symlink), then open it with
+`O_RDWR | O_CLOEXEC | O_EXCL | O_NOFOLLOW | O_NONBLOCK`. Retry only
+interrupted opens. Do not fall back to read-write opens without `O_EXCL` or
+`O_NOFOLLOW`.
+
+Immediately after open, use `fstat` and require `S_ISBLK` and an exact
+`st_rdev == makedev(requested_major, requested_minor)` match. Query
+`BLKGETSIZE64` and `BLKROGET` through that same descriptor; require nonzero
+capacity and writable state. Resolve the sysfs identity again and compare its
+canonical device path and capacity with the admission snapshot. Run the complete
+DeviceGuard against the descriptor's device number after open and again
+immediately before the first write. Keep the same descriptor for the entire
+job; never close it and reopen a pathname between validation and I/O. Treat
+`O_EXCL` as an additional kernel-level exclusion check, not a replacement for
+mount, swap, holder, topology, or identity validation.
+
+A path mismatch, symlink, changed major/minor, changed capacity, read-only
+transition, newly mounted descendant, active swap, new holder, lost USB
+ancestry, or any uninspectable safety metadata must reject admission. Once a
+job starts, any descriptor error or device loss is terminal; never resolve the
+old major/minor again and continue against a replacement device. No fallback
+to a different device is permitted.
+
+## Service privilege boundary
+
+The service remains a fixed root-owned system D-Bus executable; the GUI remains
+unprivileged. The systemd unit now additionally sets a restrictive umask,
+private keyring, native syscall architecture, and disables namespace creation
+and realtime scheduling. It retains `PrivateDevices=false` because the service
+must inspect actual host block devices, and it must not use `ProcSubset=pid`
+because DeviceGuard reads `/proc/self/mountinfo` and `/proc/swaps`. Its
+capability bounding set remains narrow; do not add `CAP_SYS_ADMIN`,
+`CAP_SYS_RAWIO`, or broad capabilities without a demonstrated kernel
+requirement and a separate security review. Device access must remain through
+the fixed service code path, never through a shell or user-selected executable.
+
+These hardening directives and the Polkit policy are tested in CI. They are
+defense-in-depth configuration only; they do not make the currently read-only
+service capable of writing.
+
 ## Current implementation status
 
 The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit write policy, descriptor-passing write request, writable device open, D-Bus job integration, and physical write path are not implemented. The asynchronous worker and in-memory job registry primitives exist, but are not connected to the service. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
