@@ -6,6 +6,10 @@ The Qt GUI must remain unprivileged. It must never run as root and must never in
 
 The preferred boundary is a small system D-Bus service, not a setuid binary and not a GUI launched through pkexec. The service owns the device file descriptor for the complete operation. Polkit authorizes the D-Bus caller for each write request.
 
+## D-Bus interface contract
+
+The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml). It defines read-only target inspection, a write request carrying an image Unix-FD, job cancellation, and progress/completion signals. This XML is a protocol contract only; no D-Bus service currently exports it. `StartWrite` must not be exposed until the service-side Polkit check, descriptor-bound safety checks, and write-job ownership are implemented.
+
 ## Proposed request protocol
 
 1. The GUI opens the selected ISO read-only and passes the already-open image descriptor as a D-Bus Unix file descriptor. It sends the selected block device's major/minor numbers, not an arbitrary path.
