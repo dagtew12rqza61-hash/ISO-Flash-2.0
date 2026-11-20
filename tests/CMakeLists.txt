@@ -4,6 +4,11 @@ pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
 pkg_check_modules(GIO_UNIX REQUIRED IMPORTED_TARGET gio-unix-2.0)
 
+get_target_property(ISO_FLASH_SERVICE_DEFINITIONS iso-flash-service COMPILE_DEFINITIONS)
+if(NOT "ISO_FLASH_ENABLE_WRITES=1" IN_LIST ISO_FLASH_SERVICE_DEFINITIONS)
+  message(FATAL_ERROR "The packaged D-Bus service must compile the Polkit-gated write path")
+endif()
+
 add_executable(test_dbus_fd_client dbus_fd_client.cpp)
 target_link_libraries(test_dbus_fd_client PRIVATE PkgConfig::GIO PkgConfig::GIO_UNIX)
 target_compile_options(test_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)

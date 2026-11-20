@@ -4,7 +4,7 @@
 
 The Qt GUI remains unprivileged. It never runs as root and never invokes a shell command with a device path. The system D-Bus service owns the writable target descriptor for the complete operation. Each write request is authorized independently by Polkit.
 
-The normal packaged service is deliberately built without ISO_FLASH_ENABLE_WRITES. Its StartWrite method fails closed with WRITE_DISABLED. A separate CI-only service executable enables the write path and loop-device test exception. That exception is limited to file-backed loop devices and is not compiled into the package.
+The packaged D-Bus service is built with ISO_FLASH_ENABLE_WRITES so that the GUI can perform the requested operation. Every StartWrite still requires verified caller identity, a successful Polkit decision, a fresh USB DeviceGuard pass, and a descriptor-bound target revalidation. The separate CI-only service executable adds a loop-device exception and deterministic device-loss injection; neither test hook is compiled into the package.
 
 ## D-Bus request flow
 
@@ -50,4 +50,4 @@ The CI test exception and injected EIO path are not part of the production packa
 - Only hybrid Linux ISO raw imaging is supported.
 - Windows installer ISOs need a separate preparation flow (UEFI/FAT32 boot partition and NTFS handling for oversized install.wim).
 - Loop-device tests prove the software path against a disposable block device; they do not prove compatibility with every USB controller, flash drive, or firmware.
-- The current packaged service is read-only by design until the release gates above are complete.
+- The packaged service supports Polkit-gated USB writes. The release remains unpublished until the manual GUI smoke test and security review above are complete.

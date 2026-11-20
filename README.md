@@ -4,11 +4,11 @@ C++20 / Qt 6 application for writing hybrid Linux ISO images to USB drives on Li
 
 ## Current development status
 
-**The production package is still fail-closed: physical writes are disabled by default.**
+**The packaged D-Bus service now has the Polkit-gated write path enabled. No physical USB drive has been used in CI.**
 
 The privileged D-Bus service and GUI are connected. The service implements ISO descriptor transfer, caller identity checks, Polkit authorization, post-authorization target admission, owner-bound write jobs, cancellation, progress/completion signals, bounded writes, fsync, and SHA-256 read-back verification.
 
-The destructive path is enabled only in a separate CI test executable. That executable is compiled with explicit test-only definitions which allow file-backed loop devices; the normal packaged service is compiled without ISO_FLASH_ENABLE_WRITES and returns WRITE_DISABLED from StartWrite. Do not use this development package to write physical media.
+The packaged D-Bus service compiles with ISO_FLASH_ENABLE_WRITES and accepts writes only after caller-identity checks, Polkit authorization, USB-device validation, and descriptor-bound revalidation. The separate CI test executable adds only a test-only exception for file-backed loop devices and deterministic device-loss injection; those exceptions are not present in the package. The standalone low-level CLI remains fail-closed; the supported write workflow is the unprivileged GUI calling the system service.
 
 ## Implemented components
 
@@ -35,8 +35,8 @@ Ubuntu 24.04 / 26.04 amd64:
 
 ## Safety and release status
 
-- Production physical writing remains disabled pending a manual desktop-session GUI smoke test, security review of the destructive path, and explicit release approval. The complete CI loop-device, Polkit, package, and injected device-loss suite passes.
-- CI-only loop-device permission is isolated to iso-flash-service-loop-test; it is not compiled into the packaged service.
+- The packaged D-Bus write path is enabled but the project is not yet release-approved: complete a manual desktop-session GUI smoke test and security review before publishing a Release. The complete CI loop-device, Polkit, package, and injected device-loss suite passes.
+- CI-only loop-device permission and injected device-loss hooks are isolated to iso-flash-service-loop-test; the packaged service still requires verified USB transport and rejects loop devices.
 - No CI test writes to a physical drive.
 - A cancelled or interrupted operation cannot roll back bytes already written.
 - Only hybrid Linux ISO raw imaging is in scope. Windows installer ISO preparation requires a separate FAT32/NTFS-aware implementation.
