@@ -45,7 +45,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(1), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback& progress,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -73,7 +73,7 @@ int main() {
         const auto release_signal = release.get_future().share();
         iso_flash::WriteWorker worker(
             make_job(2), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [&entered, release_signal](
                 iso_flash::WriteJob&,
                 const iso_flash::WriteWorker::ProgressCallback& progress,
@@ -108,7 +108,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(3), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -129,7 +129,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(4), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -150,7 +150,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(5), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) -> iso_flash::WriteOperationResult {
@@ -171,7 +171,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(6), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback& progress,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -193,7 +193,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(7), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -214,7 +214,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(8), 100,
-            [](iso_flash::WriteJob&) { return 0; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) {
@@ -239,10 +239,10 @@ int main() {
         const auto finish_signal = finish_validation.get_future().share();
         iso_flash::WriteWorker worker(
             make_job(9), 100,
-            [&validating, finish_signal](iso_flash::WriteJob&) {
+            [&validating, finish_signal](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback& cancelled) {
                 validating.set_value();
                 finish_signal.wait();
-                return 0;
+                return cancelled() ? ECANCELED : 0;
             },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
@@ -270,7 +270,7 @@ int main() {
     {
         iso_flash::WriteWorker worker(
             make_job(10), 100,
-            [](iso_flash::WriteJob&) { return ENODEV; },
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return ENODEV; },
             [](iso_flash::WriteJob&,
                const iso_flash::WriteWorker::ProgressCallback&,
                const iso_flash::WriteWorker::CancelCallback&) {
