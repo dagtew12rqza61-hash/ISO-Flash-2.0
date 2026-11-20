@@ -22,6 +22,10 @@ if(service_source MATCHES "StartWrite|CancelWrite|WriteImage|O_RDWR|pwrite")
   message(FATAL_ERROR "The D-Bus service contains a forbidden write-capable endpoint or primitive")
 endif()
 
+if(NOT service_source MATCHES "g_task_run_in_thread")
+  message(FATAL_ERROR "ValidateImage must hash asynchronously outside the D-Bus main loop")
+endif()
+
 if(NOT service_source MATCHES "g_unix_fd_list_get")
   message(FATAL_ERROR "ValidateImage must receive the passed descriptor through GUnixFDList")
 endif()
