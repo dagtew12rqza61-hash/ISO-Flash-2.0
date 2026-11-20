@@ -67,14 +67,17 @@ inline bool parse_mountinfo_device(const std::string& line, std::string& device)
 
 inline bool parse_mountinfo(std::istream& input, std::vector<std::string>& devices) {
     devices.clear();
+    std::vector<std::string> parsed;
     std::string line;
     while (std::getline(input, line)) {
         if (line.empty()) return false;
         std::string device;
         if (!parse_mountinfo_device(line, device)) return false;
-        devices.push_back(device);
+        parsed.push_back(device);
     }
-    return !input.bad() && !devices.empty();
+    if (input.bad() || parsed.empty()) return false;
+    devices = std::move(parsed);
+    return true;
 }
 
 }  // namespace iso_flash
