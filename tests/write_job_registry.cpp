@@ -4,6 +4,8 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 #include <unistd.h>
 
 namespace {
@@ -59,8 +61,13 @@ int main() {
         return 1;
     }
 
-    auto snapshot = registry.snapshot(41);
-    if (!snapshot.has_value()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (registry.reap_terminal() != 1 || registry.size() != 0) {
+        std::cerr << "Registry did not reap a completed job\\n";
+        return 1;
+    }
+    if (registry.snapshot(41).has_value()) {
+        std::cerr << "Reaped job remained visible\\n";
         return 1;
     }
 
