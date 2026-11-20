@@ -121,10 +121,10 @@ jobs:
         run: |
           set -euo pipefail
           unset DBUS_SYSTEM_BUS_ADDRESS
-          sudo systemctl start dbus.service
-          sudo systemctl start polkit.service
+          timeout 20s sudo systemctl start dbus.service
+          timeout 30s sudo systemctl start polkit.service
           sudo systemctl is-active --quiet polkit.service
-          sudo systemctl start iso-flash.service
+          timeout 30s sudo systemctl start iso-flash.service
           polkit_ready=0
           for attempt in $(seq 1 50); do
             owner=$(gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.freedesktop.PolicyKit1 2>/dev/null || true)
