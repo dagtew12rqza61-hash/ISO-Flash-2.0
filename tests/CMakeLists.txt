@@ -41,3 +41,8 @@ add_executable(write_job_state_test write_job_state.cpp)
 target_include_directories(write_job_state_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(write_job_state_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME write_job_state_enforces_safe_transitions COMMAND write_job_state_test)
+
+add_executable(write_job_test write_job.cpp)
+target_include_directories(write_job_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(write_job_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME write_job_owns_descriptors_for_job_lifetime COMMAND write_job_test)
