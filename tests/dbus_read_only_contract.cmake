@@ -60,3 +60,13 @@ if(NOT service_source MATCHES "NameOwnerChanged" OR
    NOT service_source MATCHES "g_dbus_connection_signal_unsubscribe")
   message(FATAL_ERROR "Image hashing must be cancelled and disconnected from the D-Bus caller lifecycle")
 endif()
+
+if(NOT DEFINED CALLER_WATCH_HEADER OR NOT EXISTS "${CALLER_WATCH_HEADER}")
+  message(FATAL_ERROR "D-Bus caller disconnect watcher header is missing")
+endif()
+file(READ "${CALLER_WATCH_HEADER}" caller_watch_source)
+if(NOT caller_watch_source MATCHES "NameOwnerChanged" OR
+   NOT caller_watch_source MATCHES "g_cancellable_cancel" OR
+   NOT caller_watch_source MATCHES "g_dbus_connection_signal_subscribe")
+  message(FATAL_ERROR "Caller disconnect watcher must subscribe to NameOwnerChanged and cancel its task")
+endif()
