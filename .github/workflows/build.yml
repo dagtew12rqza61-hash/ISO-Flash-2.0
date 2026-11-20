@@ -36,6 +36,22 @@ jobs:
           dpkg-deb --root-owner-group --build pkg-app dist/iso-flash_2.0.0_amd64.deb
           dpkg-deb --info dist/iso-flash-engine_2.0.0_amd64.deb
           dpkg-deb --info dist/iso-flash_2.0.0_amd64.deb
+      - name: Install and smoke-test Debian packages
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=2 install -y ./dist/iso-flash-engine_2.0.0_amd64.deb ./dist/iso-flash_2.0.0_amd64.deb
+          dpkg-query -W -f='${db:Status-Status} ${Version} ${Architecture}\\n' iso-flash-engine iso-flash
+          test -x /usr/lib/iso-flash/iso-flash-write
+          test -x /usr/lib/iso-flash/iso-flash-service
+          test -x /usr/bin/iso-flash
+          test -f /usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
+          test -f /usr/lib/systemd/system/iso-flash.service
+          systemd-analyze verify /usr/lib/systemd/system/iso-flash.service
+          set +e
+          /usr/lib/iso-flash/iso-flash-write --write /tmp/iso-flash-smoke.iso /dev/null
+          status=$?
+          set -e
+          test "$status" -eq 3
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
