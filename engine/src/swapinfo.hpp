@@ -10,8 +10,22 @@ namespace iso_flash {
 inline bool parse_swapinfo(std::istream& input, std::vector<std::string>& names) {
     names.clear();
     std::string line;
-    if (!std::getline(input, line) ||
-        line != "Filename\t\tType\t\tSize\tUsed\tPriority") {
+    if (!std::getline(input, line)) {
+        return false;
+    }
+    std::istringstream header(line);
+    std::string header_name;
+    std::string header_type;
+    std::string header_size;
+    std::string header_used;
+    std::string header_priority;
+    std::string header_extra;
+    if (!(header >> header_name >> header_type >> header_size >>
+          header_used >> header_priority) ||
+        (header >> header_extra) ||
+        header_name != "Filename" || header_type != "Type" ||
+        header_size != "Size" || header_used != "Used" ||
+        header_priority != "Priority") {
         return false;
     }
 
