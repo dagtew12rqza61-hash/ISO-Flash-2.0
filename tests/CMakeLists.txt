@@ -105,3 +105,10 @@ add_executable(opened_target_job_test opened_target_job.cpp)
 target_include_directories(opened_target_job_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(opened_target_job_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME opened_target_binds_device_descriptor_and_snapshot_to_job COMMAND opened_target_job_test)
+
+add_test(
+  NAME systemd_service_keeps_required_block_device_metadata_visible
+  COMMAND ${CMAKE_COMMAND}
+    -DSERVICE_FILE=${CMAKE_SOURCE_DIR}/packaging/systemd/iso-flash.service
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/systemd_service_contract.cmake
+)
