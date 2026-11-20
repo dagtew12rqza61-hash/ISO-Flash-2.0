@@ -20,7 +20,7 @@ bool validate_target(const std::string& device, std::string& error) {
     const bool usb = real.string().find("/usb") != std::string::npos;
     if (first_line(real / "removable") != "1" && !usb) { error = "Device is not positively identified as removable USB storage"; return false; }
     struct stat root{};
-    if (::stat("/", &root) == 0 && S_ISBLK(root.st_mode)) {
+    if (::stat("/", &root) == 0 && root.st_dev != 0) {
         const fs::path root_sys = fs::canonical(fs::path("/sys/dev/block") / (std::to_string(major(root.st_dev)) + ":" + std::to_string(minor(root.st_dev))), ec);
         if (!ec && inside(root_sys, real)) { error = "Refusing to overwrite the system disk"; return false; }
     }
