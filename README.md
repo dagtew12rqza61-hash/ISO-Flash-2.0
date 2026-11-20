@@ -49,6 +49,7 @@ cmake --build build --parallel 2
 - [ ] Descriptor-bound image and writable-device validation
 - [ ] Hot-unplug-safe physical writing with safe cancellation and progress
 - [x] Standalone SHA-256 hashing from the open ISO descriptor with before/after metadata checks and fault-injection tests
+- [x] Reusable worker validation object binds SHA-256 to an admission-time image snapshot and retains the digest for the following operation callback (in-process test only)
 - [ ] Hash integration into the privileged write protocol and read-back verification
 - [x] Loop-device rejection smoke test (no writes)
 - [ ] Destructive-path tests using disposable loop devices

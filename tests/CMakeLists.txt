@@ -89,3 +89,9 @@ target_include_directories(write_job_registry_test PRIVATE ${CMAKE_SOURCE_DIR}/e
 target_compile_options(write_job_registry_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 target_link_libraries(write_job_registry_test PRIVATE Threads::Threads)
 add_test(NAME write_job_registry_manages_job_lifecycle COMMAND write_job_registry_test)
+
+add_executable(image_validation_test image_validation.cpp)
+target_include_directories(image_validation_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_link_libraries(image_validation_test PRIVATE PkgConfig::GIO Threads::Threads)
+target_compile_options(image_validation_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME image_validation_hashes_admission_snapshot_before_worker_operation COMMAND image_validation_test)
