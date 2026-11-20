@@ -1,3 +1,5 @@
+#include "device_guard.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -43,25 +45,50 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Device is not positively identified as USB storage";
         return false;
     }
-    if (first_line(real / "ro") == "1") {
-        error = "Target is read-only";
+    const std::string read_only = first_line(real / "ro");
+    if (read_only != "0") {
+        error = "Cannot verify writable state or target is read-only";
         return false;
     }
-    if (fs::exists(real / "holders") && !fs::is_empty(real / "holders", ec)) {
-        error = "Target is backing another block device (holder present)";
+    const std::string sectors = first_line(real / "size");
+    try {
+        if (sectors.empty() || std::stoull(sectors) == 0) {
+            error = "Target reports zero capacity";
+            return false;
+        }
+    } catch (...) {
+        error = "Cannot verify target capacity";
         return false;
     }
-
-    struct stat root{};
-    if (::stat("/", &root) == 0) {
-        const fs::path root_sys = sys_device(root.st_dev, ec);
-        if (!ec && inside(root_sys, real)) {
-            error = "Refusing to overwrite the system disk";
+    if (fs::exists(real / "holders")) {
+        ec.clear();
+        const bool empty = fs::is_empty(real / "holders", ec);
+        if (ec || !empty) {
+            error = "Cannot verify holders or target backs another block device";
             return false;
         }
     }
 
+    struct stat root{};
+    if (::stat("/", &root) != 0) {
+        error = "Cannot identify the system root device";
+        return false;
+    }
+    const fs::path root_sys = sys_device(root.st_dev, ec);
+    if (ec) {
+        error = "Cannot resolve the system root device in sysfs";
+        return false;
+    }
+    if (inside(root_sys, real)) {
+        error = "Refusing to overwrite the system disk";
+        return false;
+    }
+
     std::ifstream mounts("/proc/self/mountinfo");
+    if (!mounts) {
+        error = "Cannot inspect mounted filesystems";
+        return false;
+    }
     std::string line;
     while (std::getline(mounts, line)) {
         const auto sep = line.find(" - ");
@@ -83,6 +110,10 @@ bool validate_target(const std::string& device, std::string& error) {
     }
 
     std::ifstream swaps("/proc/swaps");
+    if (!swaps) {
+        error = "Cannot inspect active swap devices";
+        return false;
+    }
     std::getline(swaps, line);
     while (std::getline(swaps, line)) {
         const auto end = line.find(' ');
