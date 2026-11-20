@@ -1,4 +1,4 @@
-set(SERVICE_SOURCE "${CMAKE_SOURCE_DIR}/engine/src/dbus_service.cpp")
+get_filename_component(SERVICE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../engine/src/dbus_service.cpp" ABSOLUTE)
 
 if(NOT DEFINED SERVICE_SOURCE OR NOT EXISTS "${SERVICE_SOURCE}")
   message(FATAL_ERROR "D-Bus service source is missing")
