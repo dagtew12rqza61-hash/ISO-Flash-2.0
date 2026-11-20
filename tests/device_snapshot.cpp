@@ -19,6 +19,9 @@ int main() {
         iso_flash::same_writable_device(initial, zero_capacity) ||
         iso_flash::same_writable_device(zero_capacity, zero_capacity) ||
         !iso_flash::same_opened_target(initial, initial.device_number, unchanged) ||
+        !iso_flash::matches_expected_device(initial, initial.device_number) ||
+        iso_flash::matches_expected_device(initial, replaced.device_number) ||
+        !iso_flash::matches_expected_device(initial, 0) ||
         iso_flash::same_opened_target(initial, replaced.device_number, unchanged) ||
         iso_flash::same_opened_target(initial, initial.device_number, replaced) ||
         iso_flash::same_opened_target(initial, initial.device_number, resized) ||
