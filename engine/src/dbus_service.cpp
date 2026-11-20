@@ -16,6 +16,10 @@
 
 #include <atomic>
 #include <cerrno>
+#ifdef ISO_FLASH_TEST_WRITE_DELAY
+#include <chrono>
+#include <thread>
+#endif
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -360,6 +364,15 @@ void start_write_worker(GTask* task, gpointer, gpointer task_data,
             iso_flash::WriteJob& write_job,
             const iso_flash::WriteWorker::ProgressCallback& progress,
             const iso_flash::WriteWorker::CancelCallback& cancelled) {
+#ifdef ISO_FLASH_TEST_WRITE_DELAY
+            for (int delay_step = 0; delay_step < 10; ++delay_step) {
+                if (cancelled()) {
+                    return iso_flash::WriteOperationResult{
+                        iso_flash::WriteIoStatus::Cancelled, 0, 0};
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+#endif
             const auto outcome = iso_flash::write_image_and_verify(
                 write_job.image_fd(), write_job.target_fd(),
                 write_job.image_snapshot(),

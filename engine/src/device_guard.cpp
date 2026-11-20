@@ -52,7 +52,16 @@ bool validate_target_device(dev_t device_number, std::string& error) {
         error = "Select the whole drive, not a partition";
         return false;
     }
-    if (!has_usb_transport_ancestor(real)) {
+    const bool has_usb_transport = has_usb_transport_ancestor(real);
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+    const bool is_test_loop_device =
+        real.parent_path() == fs::path("/sys/devices/virtual/block") &&
+        real.filename().string().rfind("loop", 0) == 0 &&
+        fs::is_directory(real / "loop");
+    if (!has_usb_transport && !is_test_loop_device) {
+#else
+    if (!has_usb_transport) {
+#endif
         error = "Device has no verified USB transport ancestor in sysfs";
         return false;
     }
