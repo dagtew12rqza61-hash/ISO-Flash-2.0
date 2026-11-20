@@ -26,11 +26,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf pkg-engine pkg-app dist
-          mkdir -p pkg-engine/DEBIAN pkg-engine/usr/lib/iso-flash pkg-engine/usr/share/dbus-1/system-services pkg-engine/usr/lib/systemd/system pkg-engine/usr/share/polkit-1/actions pkg-app/DEBIAN pkg-app/usr/bin pkg-app/usr/share/applications dist
+          mkdir -p pkg-engine/DEBIAN pkg-engine/usr/lib/iso-flash pkg-engine/usr/share/dbus-1/system-services pkg-engine/usr/share/dbus-1/system.d pkg-engine/usr/lib/systemd/system pkg-engine/usr/share/polkit-1/actions pkg-app/DEBIAN pkg-app/usr/bin pkg-app/usr/share/applications dist
           install -m 0755 build/engine/iso-flash-write pkg-engine/usr/lib/iso-flash/iso-flash-write
           install -m 0755 build/engine/iso-flash-service pkg-engine/usr/lib/iso-flash/iso-flash-service
           install -m 0644 packaging/engine/control pkg-engine/DEBIAN/control
           install -m 0644 packaging/dbus/org.iso_flash.Manager1.service pkg-engine/usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
+          install -m 0644 packaging/dbus/org.iso_flash.Manager1.conf pkg-engine/usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
           install -m 0644 packaging/systemd/iso-flash.service pkg-engine/usr/lib/systemd/system/iso-flash.service
           install -m 0644 packaging/polkit/org.iso_flash.policy pkg-engine/usr/share/polkit-1/actions/org.iso_flash.policy
           install -m 0644 packaging/application/control pkg-app/DEBIAN/control
@@ -49,6 +50,9 @@ jobs:
           test -x /usr/lib/iso-flash/iso-flash-service
           test -x /usr/bin/iso-flash
           test -f /usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
+          test -f /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
+          grep -q '<allow own="org.iso_flash.Manager1"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
+          grep -q '<allow send_destination="org.iso_flash.Manager1"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
           test -f /usr/lib/systemd/system/iso-flash.service
           test -f /usr/share/polkit-1/actions/org.iso_flash.policy
           grep -q '<action id="org.iso_flash.write">' /usr/share/polkit-1/actions/org.iso_flash.policy
@@ -122,28 +126,10 @@ jobs:
           set -euo pipefail
           unset DBUS_SYSTEM_BUS_ADDRESS
           timeout 20s sudo systemctl start dbus.service
+          sudo dbus-send --system --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
           timeout 30s sudo systemctl start polkit.service
           sudo systemctl is-active --quiet polkit.service
-          cleanup() {
-            sudo pkill -x iso-flash-service 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          sudo /usr/lib/iso-flash/iso-flash-service >/tmp/iso-flash-real-polkit-service.log 2>&1 &
-          service_ready=0
-          for attempt in $(seq 1 50); do
-            owner=$(gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.iso_flash.Manager1 2>/dev/null || true)
-            if printf '%s' "$owner" | grep -q true; then
-              service_ready=1
-              break
-            fi
-            sleep 0.2
-          done
-          if [ "$service_ready" -ne 1 ]; then
-            echo "ISO Flash service did not acquire its system-bus name" >&2
-            cat /tmp/iso-flash-real-polkit-service.log || true
-            sudo systemctl status iso-flash.service --no-pager || true
-            exit 1
-          fi
+          timeout 30s sudo systemctl start iso-flash.service
           polkit_ready=0
           for attempt in $(seq 1 50); do
             owner=$(gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.freedesktop.PolicyKit1 2>/dev/null || true)
