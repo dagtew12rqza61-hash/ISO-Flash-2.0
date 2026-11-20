@@ -26,6 +26,12 @@ if(NOT service_source MATCHES "g_task_run_in_thread")
   message(FATAL_ERROR "ValidateImage must hash asynchronously outside the D-Bus main loop")
 endif()
 
+if(NOT service_source MATCHES "kMaxConcurrentImageValidations" OR
+   NOT service_source MATCHES "compare_exchange_weak" OR
+   NOT service_source MATCHES "fetch_sub")
+  message(FATAL_ERROR "D-Bus image validation must have a bounded concurrent-task limit")
+endif()
+
 if(NOT service_source MATCHES "g_unix_fd_list_get")
   message(FATAL_ERROR "ValidateImage must receive the passed descriptor through GUnixFDList")
 endif()
