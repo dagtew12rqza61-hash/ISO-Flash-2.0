@@ -2,6 +2,7 @@
 #include "write_job.hpp"
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstdio>
 #include <fcntl.h>
 #include <iostream>
