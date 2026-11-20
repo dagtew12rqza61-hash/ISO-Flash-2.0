@@ -51,3 +51,8 @@ add_executable(write_io_test write_io.cpp)
 target_include_directories(write_io_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(write_io_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME write_io_handles_short_writes_errors_and_cancellation COMMAND write_io_test)
+
+add_executable(write_progress_test write_progress.cpp)
+target_include_directories(write_progress_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(write_progress_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME write_progress_is_monotonic_and_bounded COMMAND write_progress_test)
