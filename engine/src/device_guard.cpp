@@ -39,15 +39,10 @@ static bool has_usb_transport_ancestor(const fs::path& device) {
     return false;
 }
 
-bool validate_target(const std::string& device, std::string& error) {
+bool validate_target_device(dev_t device_number, std::string& error) {
     try {
-    struct stat st{};
-    if (::stat(device.c_str(), &st) != 0 || !S_ISBLK(st.st_mode)) {
-        error = "Target is not a block device";
-        return false;
-    }
     std::error_code ec;
-    const fs::path real = sys_device(st.st_rdev, ec);
+    const fs::path real = sys_device(device_number, ec);
     if (ec || !fs::exists(real / "size")) {
         error = "Cannot resolve target in sysfs";
         return false;
@@ -174,4 +169,13 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Safety inspection failed closed due to an unexpected metadata error";
         return false;
     }
+}
+
+bool validate_target(const std::string& device, std::string& error) {
+    struct stat metadata{};
+    if (::stat(device.c_str(), &metadata) != 0 || !S_ISBLK(metadata.st_mode)) {
+        error = "Target is not a block device";
+        return false;
+    }
+    return validate_target_device(metadata.st_rdev, error);
 }
