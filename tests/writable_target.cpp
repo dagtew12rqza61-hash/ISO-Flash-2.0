@@ -15,7 +15,7 @@ int main() {
 
     for (const std::string invalid : {
              "", ".", "..", "../sda", "sda/1", "/dev/sda", "sda\n",
-             "sda name", "sda;touch", std::string("sda\0evil", 8)}) {
+             "sda name", "sda;touch", std::string({'s', 'd', 'a', '\0', 'e', 'v', 'i', 'l'})}) {
         if (iso_flash::valid_kernel_device_node_basename(invalid)) {
             std::cerr << "Unsafe device-node name was accepted: " << invalid << '\n';
             return 1;
