@@ -278,6 +278,60 @@ int main() {
             return 1;
         }
     }
+
+    for (int busy_stage = 2; busy_stage <= 3; ++busy_stage) {
+        int descriptors[2] = {-1, -1};
+        if (::pipe(descriptors) != 0) {
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        const int owned_descriptor = descriptors[0];
+        ::close(descriptors[1]);
+        int guard_calls = 0;
+        iso_flash::WritableTarget busy_target;
+        std::string busy_error;
+        const auto fake_resolve = [&](dev_t, std::string& path,
+                                      fs::path& identity, std::string&) {
+            path = "/synthetic/dev/sda";
+            identity = "/synthetic/sys/devices/usb/sda";
+            return true;
+        };
+        const auto fake_inspect = [](const std::string&, std::uint64_t,
+                                     std::string&) { return true; };
+        const auto fake_open = [&](const char*, int) { return owned_descriptor; };
+        const auto fake_snapshot = [&](int, iso_flash::DeviceSnapshot& snapshot,
+                                       std::string&) {
+            snapshot = {static_cast<std::uint64_t>(expected), 4096, false};
+            return true;
+        };
+        const auto fake_guard = [&](dev_t, std::string& message) {
+            ++guard_calls;
+            if (guard_calls == busy_stage) {
+                message = busy_stage == 2
+                    ? "synthetic mount appeared during admission"
+                    : "synthetic swap activated before admission completed";
+                return false;
+            }
+            return true;
+        };
+        if (iso_flash::open_writable_target_source_with(
+                expected, busy_target, busy_error, fake_resolve, fake_inspect,
+                fake_open, fake_snapshot, fake_guard) ||
+            busy_target.valid() || guard_calls != busy_stage) {
+            std::cerr << "New mount/swap state at guard pass " << busy_stage
+                      << " was not rejected: " << busy_error << '\\n';
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        errno = 0;
+        if (::fcntl(owned_descriptor, F_GETFD) != -1 || errno != EBADF) {
+            std::cerr << "Descriptor survived mount/swap race rejection\\n";
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+    }
     fs::remove_all(root, ec);
     return 0;
 }
