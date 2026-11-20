@@ -73,6 +73,7 @@ int main() {
         const auto release_signal = release.get_future().share();
         iso_flash::WriteWorker worker(
             make_job(2), 100,
+            [](iso_flash::WriteJob&) { return 0; },
             [&entered, release_signal](
                 iso_flash::WriteJob&,
                 const iso_flash::WriteWorker::ProgressCallback& progress,
@@ -179,12 +180,12 @@ int main() {
                     iso_flash::WriteIoStatus::Failed, 0, ENOSPC};
             });
         if (!worker.start()) {
-            std::cerr << "Partial-failure worker failed to start\\n";
+            std::cerr << "Partial-failure worker failed to start\n";
             return 1;
         }
         worker.join();
         if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Failed, 25, ENOSPC)) {
-            std::cerr << "Partial progress overwrote the underlying I/O error\\n";
+            std::cerr << "Partial progress overwrote the underlying I/O error\n";
             return 1;
         }
     }
@@ -200,12 +201,12 @@ int main() {
                     iso_flash::WriteIoStatus::Completed, 101, 0};
             });
         if (!worker.start()) {
-            std::cerr << "Overrun worker failed to start\\n";
+            std::cerr << "Overrun worker failed to start\n";
             return 1;
         }
         worker.join();
         if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Failed, 0, EIO)) {
-            std::cerr << "Worker accepted a byte count beyond the image size\\n";
+            std::cerr << "Worker accepted a byte count beyond the image size\n";
             return 1;
         }
     }
@@ -221,12 +222,68 @@ int main() {
                     iso_flash::WriteIoStatus::Completed, 100, 0};
             });
         if (!worker.cancel() || !worker.start()) {
-            std::cerr << "Queued cancellation was not accepted\\n";
+            std::cerr << "Queued cancellation was not accepted\n";
             return 1;
         }
         worker.join();
         if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Cancelled, 0)) {
-            std::cerr << "Queued cancellation unexpectedly ran the operation\\n";
+            std::cerr << "Queued cancellation unexpectedly ran the operation\n";
+            return 1;
+        }
+    }
+
+
+    {
+        std::promise<void> validating;
+        std::promise<void> finish_validation;
+        const auto finish_signal = finish_validation.get_future().share();
+        iso_flash::WriteWorker worker(
+            make_job(9), 100,
+            [&validating, finish_signal](iso_flash::WriteJob&) {
+                validating.set_value();
+                finish_signal.wait();
+                return 0;
+            },
+            [](iso_flash::WriteJob&,
+               const iso_flash::WriteWorker::ProgressCallback&,
+               const iso_flash::WriteWorker::CancelCallback&) {
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Completed, 100, 0};
+            });
+        if (!worker.start()) {
+            std::cerr << "Validation cancellation worker failed to start\n";
+            return 1;
+        }
+        validating.get_future().wait();
+        if (!worker.cancel()) {
+            std::cerr << "Validating job rejected cancellation\n";
+            return 1;
+        }
+        finish_validation.set_value();
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Cancelled, 0)) {
+            std::cerr << "Cancelled validation proceeded into writing\n";
+            return 1;
+        }
+    }
+
+    {
+        iso_flash::WriteWorker worker(
+            make_job(10), 100,
+            [](iso_flash::WriteJob&) { return ENODEV; },
+            [](iso_flash::WriteJob&,
+               const iso_flash::WriteWorker::ProgressCallback&,
+               const iso_flash::WriteWorker::CancelCallback&) {
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Completed, 100, 0};
+            });
+        if (!worker.start()) {
+            std::cerr << "Validation failure worker failed to start\n";
+            return 1;
+        }
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::DeviceLost, 0, ENODEV)) {
+            std::cerr << "Validation did not classify device loss\n";
             return 1;
         }
     }
