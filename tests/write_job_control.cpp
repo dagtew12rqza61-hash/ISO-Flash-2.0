@@ -1,6 +1,7 @@
 #include "write_job_control.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cerrno>
 #include <iostream>
 #include <thread>
