@@ -34,7 +34,7 @@ KeyringMode=private
 RemoveIPC=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ProtectProc=invisible
+ProtectProc=default
 
 [Install]
 WantedBy=multi-user.target
