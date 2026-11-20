@@ -63,7 +63,7 @@ jobs:
           test -f /usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
           test -f /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
           grep -q '<allow own="org.iso_flash.Manager1"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
-          grep -q '<allow send_type="signal"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
+          grep -q '<allow send_type="signal" send_interface="org.iso_flash.Manager1"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
           grep -q '<allow send_destination="org.iso_flash.Manager1"/>' /usr/share/dbus-1/system.d/org.iso_flash.Manager1.conf
           test -f /usr/lib/systemd/system/iso-flash.service
           test -f /usr/share/polkit-1/actions/org.iso_flash.policy
