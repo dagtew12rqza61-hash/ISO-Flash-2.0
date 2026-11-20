@@ -6,4 +6,4 @@ Architecture: amd64
 Maintainer: ISO Flash Project
 Depends: libc6, libstdc++6, libglib2.0-0t64
 Description: ISO Flash USB image writer engine
- Separate low-level Linux block-device image writer and read-only system D-Bus inspection service.
+ Privileged system D-Bus service for Polkit-authorized USB image writing and read-back verification.
