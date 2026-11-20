@@ -21,11 +21,15 @@ rejected with a retryable busy response. The lease is released automatically
 when the asynchronous task data is destroyed, including completion and task
 setup failure paths, preventing unbounded hashing tasks from exhausting the
 privileged service. The limiter has a dedicated concurrency and lease-lifecycle
-unit test. The service also watches the caller's unique D-Bus name; when that
-connection disappears, a GCancellable stops hashing at the next bounded
-1 MiB read boundary. The cancellation subscription is removed with task-data
-cleanup, and the received descriptor and capacity lease are released on the
-same lifecycle path.
+unit test. The service also watches the caller's unique D-Bus name through a shared
+caller-watch helper. When that exact connection disappears, a GCancellable
+stops hashing at the next bounded 1 MiB read boundary. The watcher ignores
+disconnects from unrelated D-Bus clients. Its subscription and retained
+cancellable reference are released with task-data cleanup, and the received
+descriptor and capacity lease are released on the same lifecycle path. CI
+runs an isolated D-Bus integration test that closes an unrelated client first
+(to prove it does not cancel the task), then closes the watched client and
+requires cancellation to arrive.
 No caller-supplied path is opened.
 The method does not write to the image or any target device.
 
