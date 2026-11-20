@@ -29,7 +29,6 @@ RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 ProtectProc=invisible
-ProcSubset=pid
 
 [Install]
 WantedBy=multi-user.target
