@@ -44,6 +44,7 @@ cmake --build build --parallel 2
 - [ ] Descriptor-bound writable device validation
 - [ ] Complete bidirectional block-device topology validation
 - [x] In-process asynchronous worker, cancellation, progress, and job registry primitives (injected callbacks only)
+- [x] Cooperative cancellation propagated into asynchronous validation callbacks
 - [ ] D-Bus job lifecycle integration and Polkit authorization
 - [ ] Descriptor-bound image and writable-device validation
 - [ ] Hot-unplug-safe physical writing with safe cancellation and progress
