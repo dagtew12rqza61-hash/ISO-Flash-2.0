@@ -22,7 +22,7 @@ int main() {
     if (!iso_flash::path_is_inside("/sys/devices/sda/sda1", "/sys/devices/sda") ||
         iso_flash::path_is_inside("/sys/devices/sdaa", "/sys/devices/sda") ||
         iso_flash::path_is_inside("/sys/devices/sda-extra", "/sys/devices/sda")) {
-        std::cerr << "Sysfs path-boundary validation failed\\n";
+        std::cerr << "Sysfs path-boundary validation failed\n";
         return 1;
     }
 
@@ -80,7 +80,7 @@ int main() {
     verified = true;
     visited.clear();
     if (iso_flash::depends_on(cycle_a, canonical_disk, verified, visited) || !verified) {
-        std::cerr << "Cyclic sysfs dependency graph was not handled safely\\n";
+        std::cerr << "Cyclic sysfs dependency graph was not handled safely\n";
         fs::remove_all(root, ec);
         return 1;
     }
