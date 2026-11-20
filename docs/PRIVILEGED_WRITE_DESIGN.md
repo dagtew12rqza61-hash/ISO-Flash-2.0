@@ -53,4 +53,6 @@ The header-only `WriteJob` model in `engine/src/write_job.hpp` now owns the imag
 
 The header-only `engine/src/write_io.hpp` provides an injectable bounded write loop. It handles short writes, retries `EINTR`, stops when cancellation is requested between in-flight write calls, rejects zero-progress writes, preserves the underlying error code, and rejects negative or overflowing offsets. Its tests inject every I/O outcome and use in-memory callbacks; they do not open or write to block devices. A cancelled or failed result includes the number of bytes already transferred so the caller can report possible partial target contents.
 
+The header-only `WriteProgress` model in `engine/src/write_progress.hpp` stores a fixed nonzero total and a monotonic completed-byte count. It rejects regressions, values beyond the declared total, and zero-length jobs; remaining-byte calculations stay within the unsigned counter range. Its tests cover partial progress, completion, invalid updates, and maximum-width counters. The model is not yet connected to a worker, D-Bus signal, or GUI progress display.
+
 This helper is not called by the current CLI, D-Bus service, or GUI. It does not make physical writing available.
