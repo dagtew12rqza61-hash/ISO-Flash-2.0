@@ -60,3 +60,8 @@ The asynchronous `WriteWorker` primitive in `engine/src/write_worker.hpp` owns a
 The synchronized `WriteJobControl` model in `engine/src/write_job_control.hpp` provides a mutex-protected state/progress snapshot for a future worker and D-Bus-facing observer. It serializes cancellation against progress and terminal transitions, refuses completion until all declared bytes are accounted for, and records an error number for failed or device-lost jobs. Its tests exercise concurrent cancellation requests and lifecycle invariants. It is a control primitive only: there is no worker thread, registry, D-Bus method, or physical write path yet.
 
 This helper is not called by the current CLI, D-Bus service, or GUI. It does not make physical writing available.
+
+
+## Asynchronous job registry (implemented, not exposed to D-Bus)
+
+The header-only `WriteJobRegistry` in `engine/src/write_job_registry.hpp` owns workers by stable nonzero job ID. It rejects duplicate IDs and admission after shutdown, provides synchronized snapshot lookup and cancellation forwarding, removes terminal jobs only after moving ownership out from under its mutex, and cancels/joins all remaining workers during shutdown. Worker threads are joined without holding the registry lock, preventing shutdown or reaping from blocking registry lookups while a worker exits. Unit tests use pipe descriptors and injected callbacks only. The registry is not connected to D-Bus, the GUI, Polkit, or any physical write operation; `--write` remains disabled.
