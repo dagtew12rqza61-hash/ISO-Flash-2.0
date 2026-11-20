@@ -163,6 +163,121 @@ int main() {
         fs::remove_all(root, ec);
         return 1;
     }
+
+    for (int disconnect_stage = 1; disconnect_stage <= 3; ++disconnect_stage) {
+        int descriptors[2] = {-1, -1};
+        if (::pipe(descriptors) != 0) {
+            std::cerr << "Cannot create hot-unplug admission descriptors\\n";
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        const int owned_descriptor = descriptors[0];
+        ::close(descriptors[1]);
+        int validation_calls = 0;
+        int open_calls = 0;
+        iso_flash::WritableTarget admitted_target;
+        std::string admission_error;
+        const auto fake_resolve = [&](dev_t, std::string& path,
+                                      fs::path& identity, std::string&) {
+            path = "/synthetic/dev/sda";
+            identity = "/synthetic/sys/devices/usb/sda";
+            return true;
+        };
+        const auto fake_inspect = [](const std::string&, std::uint64_t,
+                                     std::string&) { return true; };
+        const auto fake_open = [&](const char*, int flags) {
+            ++open_calls;
+            if ((flags & (O_RDWR | O_EXCL | O_NOFOLLOW)) !=
+                (O_RDWR | O_EXCL | O_NOFOLLOW)) {
+                errno = EINVAL;
+                return -1;
+            }
+            return owned_descriptor;
+        };
+        const auto fake_snapshot = [&](int, iso_flash::DeviceSnapshot& snapshot,
+                                       std::string&) {
+            snapshot = {static_cast<std::uint64_t>(expected), 4096, false};
+            return true;
+        };
+        const auto fake_validate = [&](dev_t, std::string& message) {
+            ++validation_calls;
+            if (validation_calls == disconnect_stage) {
+                message = "synthetic device disconnected during admission";
+                return false;
+            }
+            return true;
+        };
+        if (iso_flash::open_writable_target_source_with(
+                expected, admitted_target, admission_error, fake_resolve,
+                fake_inspect, fake_open, fake_snapshot, fake_validate) ||
+            admitted_target.valid() || validation_calls != disconnect_stage ||
+            open_calls != (disconnect_stage == 1 ? 0 : 1)) {
+            std::cerr << "Device disconnect at admission stage " << disconnect_stage
+                      << " was not rejected: " << admission_error << '\\n';
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        errno = 0;
+        if (disconnect_stage > 1 &&
+            (::fcntl(owned_descriptor, F_GETFD) != -1 || errno != EBADF)) {
+            std::cerr << "Descriptor survived failed hot-unplug admission\\n";
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        if (disconnect_stage == 1) ::close(owned_descriptor);
+    }
+
+    for (int failed_snapshot = 1; failed_snapshot <= 2; ++failed_snapshot) {
+        int descriptors[2] = {-1, -1};
+        if (::pipe(descriptors) != 0) {
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        const int owned_descriptor = descriptors[0];
+        ::close(descriptors[1]);
+        int snapshot_calls = 0;
+        iso_flash::WritableTarget admitted_target;
+        std::string admission_error;
+        const auto fake_resolve = [&](dev_t, std::string& path,
+                                      fs::path& identity, std::string&) {
+            path = "/synthetic/dev/sda";
+            identity = "/synthetic/sys/devices/usb/sda";
+            return true;
+        };
+        const auto fake_inspect = [](const std::string&, std::uint64_t,
+                                     std::string&) { return true; };
+        const auto fake_open = [&](const char*, int) { return owned_descriptor; };
+        const auto fake_snapshot = [&](int, iso_flash::DeviceSnapshot& snapshot,
+                                       std::string& message) {
+            ++snapshot_calls;
+            if (snapshot_calls == failed_snapshot) {
+                message = "synthetic ioctl/fstat ENODEV";
+                return false;
+            }
+            snapshot = {static_cast<std::uint64_t>(expected), 4096, false};
+            return true;
+        };
+        const auto fake_validate = [](dev_t, std::string&) { return true; };
+        if (iso_flash::open_writable_target_source_with(
+                expected, admitted_target, admission_error, fake_resolve,
+                fake_inspect, fake_open, fake_snapshot, fake_validate) ||
+            admitted_target.valid() || snapshot_calls != failed_snapshot) {
+            std::cerr << "Descriptor loss at snapshot stage " << failed_snapshot
+                      << " was not rejected\\n";
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+        errno = 0;
+        if (::fcntl(owned_descriptor, F_GETFD) != -1 || errno != EBADF) {
+            std::cerr << "Descriptor survived failed snapshot admission\\n";
+            ::close(owned_descriptor);
+            fs::remove_all(root, ec);
+            return 1;
+        }
+    }
     fs::remove_all(root, ec);
     return 0;
 }
