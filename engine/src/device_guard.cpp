@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <set>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 
@@ -23,6 +24,50 @@ static std::string first_line(const fs::path& p) {
 static fs::path sys_device(dev_t number, std::error_code& ec) {
     return fs::canonical(fs::path("/sys/dev/block") /
         (std::to_string(major(number)) + ":" + std::to_string(minor(number))), ec);
+}
+
+static bool depends_on(const fs::path& current, const fs::path& target,
+                       bool& verified, std::set<std::string>& visited) {
+    std::error_code ec;
+    const fs::path resolved = fs::canonical(current, ec);
+    if (ec) {
+        verified = false;
+        return false;
+    }
+    if (resolved == target || inside(resolved, target)) {
+        return true;
+    }
+
+    const std::string key = resolved.string();
+    if (!visited.insert(key).second) {
+        return false;
+    }
+
+    const fs::path slaves = resolved / "slaves";
+    if (!fs::exists(slaves, ec)) {
+        if (ec) verified = false;
+        return false;
+    }
+
+    fs::directory_iterator it(slaves, ec);
+    const fs::directory_iterator end;
+    if (ec) {
+        verified = false;
+        return false;
+    }
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            verified = false;
+            return false;
+        }
+        if (depends_on(it->path(), target, verified, visited)) {
+            return true;
+        }
+        if (!verified) {
+            return false;
+        }
+    }
+    return false;
 }
 
 bool validate_target(const std::string& device, std::string& error) {
@@ -79,8 +124,14 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Cannot resolve the system root device in sysfs";
         return false;
     }
-    if (inside(root_sys, real)) {
-        error = "Refusing to overwrite the system disk";
+    bool root_topology_verified = true;
+    std::set<std::string> visited_root_devices;
+    if (depends_on(root_sys, real, root_topology_verified, visited_root_devices)) {
+        error = "Refusing to overwrite the system disk or one of its backing devices";
+        return false;
+    }
+    if (!root_topology_verified) {
+        error = "Cannot verify the complete system disk dependency chain";
         return false;
     }
 
