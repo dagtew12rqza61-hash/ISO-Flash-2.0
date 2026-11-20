@@ -39,10 +39,10 @@ The workflow:
 
 The CI test exception and injected EIO path are not part of the production package. CI must never write to host physical disks.
 
-## Remaining gates before enabling production writes
+## Remaining gates before publishing a Release
 
 - Perform a manual GUI smoke test in a real desktop session, including service-unavailable, Polkit denial, progress, cancellation, and terminal-error display.
-- Review the full destructive path and production Polkit/systemd policy before defining a production build with ISO_FLASH_ENABLE_WRITES.
+- Complete a security review of the destructive path and production Polkit/systemd policy.
 - Run final CI on the exact release commit. Do not create a release tag while any required job is failing.
 
 ## Explicit limitations
@@ -50,4 +50,4 @@ The CI test exception and injected EIO path are not part of the production packa
 - Only hybrid Linux ISO raw imaging is supported.
 - Windows installer ISOs need a separate preparation flow (UEFI/FAT32 boot partition and NTFS handling for oversized install.wim).
 - Loop-device tests prove the software path against a disposable block device; they do not prove compatibility with every USB controller, flash drive, or firmware.
-- The packaged service supports Polkit-gated USB writes. The release remains unpublished until the manual GUI smoke test and security review above are complete.
+- The packaged service supports Polkit-gated USB writes. CI also verifies an offscreen GUI launch; an interactive desktop-session review remains before publishing a Release.
