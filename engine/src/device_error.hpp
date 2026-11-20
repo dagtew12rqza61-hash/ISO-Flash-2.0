@@ -20,6 +20,12 @@ inline std::string describe_device_error(const char* operation, int error_number
         case EBUSY:
             reason = "device is busy";
             break;
+        case ENOMEDIUM:
+            reason = "no media is present";
+            break;
+        case EROFS:
+            reason = "device became read-only";
+            break;
         case EACCES:
         case EPERM:
             reason = "permission denied";
