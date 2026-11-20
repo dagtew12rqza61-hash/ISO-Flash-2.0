@@ -1,6 +1,7 @@
 #include "device_guard.hpp"
 #include "mountinfo.hpp"
 #include "block_topology.hpp"
+#include "swapinfo.hpp"
 
 #include <exception>
 #include <filesystem>
@@ -128,11 +129,12 @@ bool validate_target_device(dev_t device_number, std::string& error) {
         error = "Cannot inspect active swap devices";
         return false;
     }
-    std::string line;
-    std::getline(swaps, line);
-    while (std::getline(swaps, line)) {
-        const auto end = line.find(' ');
-        const std::string name = line.substr(0, end);
+    std::vector<std::string> swap_names;
+    if (!iso_flash::parse_swapinfo(swaps, swap_names)) {
+        error = "Cannot parse complete active swap metadata";
+        return false;
+    }
+    for (const auto& name : swap_names) {
         struct stat sw{};
         if (::stat(name.c_str(), &sw) != 0) {
             error = "Cannot verify an active swap entry";
@@ -156,10 +158,6 @@ bool validate_target_device(dev_t device_number, std::string& error) {
                 return false;
             }
         }
-    }
-    if (swaps.bad()) {
-        error = "Failed while reading active swap metadata";
-        return false;
     }
     return true;
     } catch (const std::exception& exception) {
