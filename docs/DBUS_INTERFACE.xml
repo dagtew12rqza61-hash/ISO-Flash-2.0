@@ -8,6 +8,13 @@
       <arg name="capacity_bytes" type="t" direction="out"/>
       <arg name="reason" type="s" direction="out"/>
     </method>
+    <method name="ValidateImage">
+      <arg name="image_fd" type="h" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="size_bytes" type="t" direction="out"/>
+      <arg name="sha256" type="s" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
     <method name="StartWrite">
       <arg name="image_fd" type="h" direction="in"/>
       <arg name="major" type="u" direction="in"/>
