@@ -1,5 +1,6 @@
 #include "image_fd_validation.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
@@ -32,6 +33,22 @@ int main() {
     ::close(read_only_fd);
     ::close(read_write_fd);
 
+    char large_path[] = "/tmp/iso-flash-cancel-XXXXXX";
+    const int large_fd = ::mkstemp(large_path);
+    if (large_fd < 0) return 1;
+    ::unlink(large_path);
+    constexpr off_t large_size = 2 * 1024 * 1024;
+    if (::ftruncate(large_fd, large_size) != 0) {
+        ::close(large_fd);
+        return 1;
+    }
+    unsigned int cancellation_checks = 0;
+    const auto cancelled = iso_flash::validate_image_fd(
+        large_fd, [&cancellation_checks] {
+            return ++cancellation_checks >= 2;
+        });
+    ::close(large_fd);
+
     if (!accepted.valid || accepted.bytes_hashed != 3 ||
         accepted.sha256 != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
         std::cerr << "Read-only image descriptor validation failed\n";
@@ -39,6 +56,12 @@ int main() {
     }
     if (rejected.valid || rejected.error_number == 0) {
         std::cerr << "Writable image descriptor was not rejected\n";
+        return 1;
+    }
+    if (cancelled.valid || cancelled.error_number != ECANCELED ||
+        cancelled.bytes_hashed == 0 ||
+        cancelled.bytes_hashed >= static_cast<std::uint64_t>(large_size)) {
+        std::cerr << "Image validation did not stop at a cancellation boundary\\n";
         return 1;
     }
     return 0;
