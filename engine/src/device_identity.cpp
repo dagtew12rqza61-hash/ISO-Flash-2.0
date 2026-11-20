@@ -14,6 +14,23 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
                               std::uint64_t& capacity_bytes,
                               dev_t expected_device_number) {
     capacity_bytes = 0;
+    struct stat path_before{};
+    if (::stat(device.c_str(), &path_before) != 0 || !S_ISBLK(path_before.st_mode)) {
+        error = "Target path is not a block device";
+        return false;
+    }
+    const std::uint64_t path_device_number =
+        static_cast<std::uint64_t>(path_before.st_rdev);
+    if (expected_device_number != 0 &&
+        path_device_number != static_cast<std::uint64_t>(expected_device_number)) {
+        error = "Target path does not match the requested device identity";
+        return false;
+    }
+    if (!validate_target_device(path_before.st_rdev, error)) {
+        error = "Target failed preliminary safety inspection: " + error;
+        return false;
+    }
+
     int raw_fd = -1;
     const auto open_function = [](const char* path, int flags) {
         return ::open(path, flags);
@@ -33,8 +50,10 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     iso_flash::DeviceSnapshot original{};
     bool ok = iso_flash::read_device_snapshot(
         fd.get(), original, error, fstat_function, ioctl_function);
-    if (ok && !iso_flash::matches_expected_device(
-                  original, static_cast<std::uint64_t>(expected_device_number))) {
+    if (ok && (!iso_flash::matches_expected_device(
+                   original, path_device_number) ||
+               !iso_flash::matches_expected_device(
+                   original, static_cast<std::uint64_t>(expected_device_number)))) {
         error = "Opened device does not match the requested major/minor identity";
         ok = false;
     }
