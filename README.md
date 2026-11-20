@@ -26,6 +26,8 @@ cmake --build build --parallel 2
 - [x] Synthetic sysfs dependency traversal regression tests
 - [x] Strict sysfs capacity metadata parsing
 - [x] Injected block-device metadata/read failure tests (`EIO`, `ENODEV`)
+- [x] Read-only open failure tests (`EACCES`, `ENODEV`)
+- [x] RAII file-descriptor ownership and cleanup tests
 - [x] Snapshot revalidation tests for device replacement, capacity changes, and read-only transitions
 - [x] Fail-closed handling for filesystem metadata exceptions
 - [x] Separate writer executable boundary
