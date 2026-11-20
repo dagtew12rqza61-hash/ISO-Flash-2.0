@@ -23,12 +23,15 @@ class WriteWorker {
 public:
     using ProgressCallback = std::function<bool(std::uint64_t)>;
     using CancelCallback = std::function<bool()>;
+    using Validation = std::function<int(WriteJob&)>;
     using Operation = std::function<WriteOperationResult(
         WriteJob&, const ProgressCallback&, const CancelCallback&)>;
 
-    WriteWorker(WriteJob job, std::uint64_t total_bytes, Operation operation)
+    WriteWorker(WriteJob job, std::uint64_t total_bytes,
+                Validation validation, Operation operation)
         : job_(std::move(job)),
           control_(total_bytes),
+          validation_(std::move(validation)),
           operation_(std::move(operation)) {}
 
     WriteWorker(const WriteWorker&) = delete;
@@ -43,7 +46,7 @@ public:
 
     bool start() {
         const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
-        if (started_ || !job_.has_valid_resources() || !operation_ ||
+        if (started_ || !job_.has_valid_resources() || !validation_ || !operation_ ||
             !control_.snapshot().total_bytes) {
             return false;
         }
@@ -80,6 +83,21 @@ private:
     void run() noexcept {
         try {
             if (!control_.begin_validation()) {
+                return;
+            }
+
+            int validation_error = 0;
+            try {
+                validation_error = validation_(job_);
+            } catch (...) {
+                validation_error = EIO;
+            }
+            if (validation_error != 0) {
+                if (is_device_lost(validation_error)) {
+                    control_.finish_device_lost(validation_error);
+                } else {
+                    control_.finish_failed(validation_error);
+                }
                 return;
             }
 
@@ -157,6 +175,7 @@ private:
 
     WriteJob job_;
     WriteJobControl control_;
+    Validation validation_;
     Operation operation_;
     mutable std::mutex lifecycle_mutex_;
     std::thread worker_;
