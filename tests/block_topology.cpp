@@ -37,9 +37,10 @@ int main() {
     const fs::path partition = disk / "sda1";
     const fs::path dm = root / "devices/virtual/dm-0";
     const fs::path unrelated = root / "devices/usb/sdb";
-    fs::create_directories(partition);
+    fs::create_directories(partition / "slaves");
+    fs::create_directories(disk / "slaves");
     fs::create_directories(dm / "slaves");
-    fs::create_directories(unrelated);
+    fs::create_directories(unrelated / "slaves");
 
     const fs::path holders = disk / "holders";
     fs::create_directories(holders);
@@ -84,6 +85,16 @@ int main() {
     visited.clear();
     if (iso_flash::depends_on(unrelated, canonical_disk, verified, visited) || !verified) {
         std::cerr << "Unrelated leaf device was incorrectly classified\n";
+        fs::remove_all(root, ec);
+        return 1;
+    }
+
+    const fs::path missing_slaves = root / "devices/virtual/missing-slaves";
+    fs::create_directories(missing_slaves);
+    verified = true;
+    visited.clear();
+    if (iso_flash::depends_on(missing_slaves, canonical_disk, verified, visited) || verified) {
+        std::cerr << "Missing sysfs slaves metadata was accepted\\n";
         fs::remove_all(root, ec);
         return 1;
     }
