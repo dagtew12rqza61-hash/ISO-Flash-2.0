@@ -53,10 +53,14 @@ inline bool valid_kernel_device_node_basename(const std::string& name) {
     return true;
 }
 
-inline bool resolve_kernel_device_node(dev_t expected_device,
-                                       std::string& node_path,
-                                       fs::path& sysfs_identity,
-                                       std::string& error) {
+template <typename CanonicalFunction>
+inline bool resolve_kernel_device_node_at(dev_t expected_device,
+                                          const fs::path& sys_dev_block_root,
+                                          const fs::path& dev_root,
+                                          std::string& node_path,
+                                          fs::path& sysfs_identity,
+                                          std::string& error,
+                                          CanonicalFunction&& canonical_function) {
     node_path.clear();
     sysfs_identity.clear();
     if (expected_device == 0) {
@@ -64,11 +68,11 @@ inline bool resolve_kernel_device_node(dev_t expected_device,
         return false;
     }
 
-    const fs::path link = fs::path("/sys/dev/block") /
+    const fs::path link = sys_dev_block_root /
         (std::to_string(major(expected_device)) + ":" +
          std::to_string(minor(expected_device)));
     std::error_code ec;
-    const fs::path resolved = fs::canonical(link, ec);
+    const fs::path resolved = canonical_function(link, ec);
     if (ec || resolved.empty()) {
         error = "Cannot resolve requested block device in sysfs";
         return false;
@@ -105,16 +109,41 @@ inline bool resolve_kernel_device_node(dev_t expected_device,
         return false;
     }
 
-    node_path = "/dev/" + device_name;
+    node_path = (dev_root / device_name).string();
     sysfs_identity = resolved;
     return true;
 }
 
-inline bool inspect_block_node_path(const std::string& path,
-                                    std::uint64_t expected_device_number,
-                                    std::string& error) {
+inline bool resolve_kernel_device_node_at(dev_t expected_device,
+                                          const fs::path& sys_dev_block_root,
+                                          const fs::path& dev_root,
+                                          std::string& node_path,
+                                          fs::path& sysfs_identity,
+                                          std::string& error) {
+    return resolve_kernel_device_node_at(
+        expected_device, sys_dev_block_root, dev_root, node_path,
+        sysfs_identity, error,
+        [](const fs::path& path, std::error_code& ec) {
+            return fs::canonical(path, ec);
+        });
+}
+
+inline bool resolve_kernel_device_node(dev_t expected_device,
+                                       std::string& node_path,
+                                       fs::path& sysfs_identity,
+                                       std::string& error) {
+    return resolve_kernel_device_node_at(
+        expected_device, "/sys/dev/block", "/dev", node_path,
+        sysfs_identity, error);
+}
+
+template <typename LstatFunction>
+inline bool inspect_block_node_path_with(const std::string& path,
+                                         std::uint64_t expected_device_number,
+                                         std::string& error,
+                                         LstatFunction&& lstat_function) {
     struct stat metadata {};
-    if (::lstat(path.c_str(), &metadata) != 0) {
+    if (lstat_function(path.c_str(), &metadata) != 0) {
         const int saved_error = errno;
         error = describe_device_error("Cannot inspect kernel device node", saved_error);
         return false;
@@ -128,6 +157,16 @@ inline bool inspect_block_node_path(const std::string& path,
         return false;
     }
     return true;
+}
+
+inline bool inspect_block_node_path(const std::string& path,
+                                    std::uint64_t expected_device_number,
+                                    std::string& error) {
+    return inspect_block_node_path_with(
+        path, expected_device_number, error,
+        [](const char* value, struct stat* metadata) {
+            return ::lstat(value, metadata);
+        });
 }
 
 inline constexpr int writable_target_open_flags() noexcept {
