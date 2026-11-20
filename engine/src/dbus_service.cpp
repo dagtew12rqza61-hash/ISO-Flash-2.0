@@ -6,6 +6,7 @@
 #include <gio/gunixfdlist.h>
 
 #include <cstdint>
+#include <new>
 #include <string>
 #include <sys/sysmacros.h>
 
@@ -40,6 +41,45 @@ void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
         invocation,
         g_variant_new("(bts)", accepted, static_cast<guint64>(capacity),
                       reason.c_str()));
+}
+
+struct ImageValidationTaskData {
+    iso_flash::UniqueFd descriptor;
+    iso_flash::ImageFdValidationResult validation;
+};
+
+void image_validation_worker(GTask* task, gpointer, gpointer task_data,
+                             GCancellable*) {
+    auto* data = static_cast<ImageValidationTaskData*>(task_data);
+    data->validation = iso_flash::validate_image_fd(data->descriptor.get());
+    g_task_return_boolean(task, TRUE);
+}
+
+void image_validation_complete(GObject*, GAsyncResult* async_result,
+                               gpointer user_data) {
+    auto* invocation = G_DBUS_METHOD_INVOCATION(user_data);
+    GTask* task = G_TASK(async_result);
+    auto* data = static_cast<ImageValidationTaskData*>(g_task_get_task_data(task));
+
+    GError* error = nullptr;
+    if (!g_task_propagate_boolean(task, &error)) {
+        const std::string reason = error != nullptr
+            ? error->message : "Asynchronous image validation failed";
+        if (error != nullptr) g_error_free(error);
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                          reason.c_str()));
+    } else {
+        const auto& validation = data->validation;
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(btss)", validation.valid,
+                          static_cast<guint64>(validation.bytes_hashed),
+                          validation.sha256.c_str(),
+                          validation.valid ? "" : validation.reason.c_str()));
+    }
+    g_object_unref(invocation);
 }
 
 void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
@@ -102,14 +142,27 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
             return;
         }
 
-        const iso_flash::UniqueFd owned_fd(received_fd);
-        const auto validation = iso_flash::validate_image_fd(owned_fd.get());
-        g_dbus_method_invocation_return_value(
-            invocation,
-            g_variant_new("(btss)", validation.valid,
-                          static_cast<guint64>(validation.bytes_hashed),
-                          validation.sha256.c_str(),
-                          validation.valid ? "" : validation.reason.c_str()));
+        auto* task_data = new (std::nothrow) ImageValidationTaskData{
+            iso_flash::UniqueFd(received_fd), {}};
+        if (task_data == nullptr) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot allocate image validation task"));
+            return;
+        }
+
+        GTask* task = g_task_new(
+            nullptr, nullptr, image_validation_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) {
+                delete static_cast<ImageValidationTaskData*>(data);
+            });
+        g_task_run_in_thread(task, image_validation_worker);
+        g_object_unref(task);
         return;
     }
 
