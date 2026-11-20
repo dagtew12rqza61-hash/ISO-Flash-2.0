@@ -9,7 +9,7 @@ target_link_libraries(test_dbus_fd_client PRIVATE PkgConfig::GIO PkgConfig::GIO_
 target_compile_options(test_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
 add_executable(test_polkit_dbus_integration polkit_dbus_integration.cpp)
-target_link_libraries(test_polkit_dbus_integration PRIVATE PkgConfig::GIO)
+target_link_libraries(test_polkit_dbus_integration PRIVATE PkgConfig::GIO Threads::Threads)
 target_compile_options(test_polkit_dbus_integration PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
 add_executable(test_polkit_authorization polkit_authorization.cpp)
