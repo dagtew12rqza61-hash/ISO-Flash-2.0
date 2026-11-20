@@ -23,11 +23,13 @@ struct WritableTarget {
     UniqueFd descriptor;
     DeviceSnapshot snapshot;
     fs::path sysfs_identity;
+    std::string node_path;
 
     WritableTarget() = default;
-    WritableTarget(UniqueFd fd, DeviceSnapshot state, fs::path identity)
+    WritableTarget(UniqueFd fd, DeviceSnapshot state, fs::path identity,
+                   std::string path)
         : descriptor(std::move(fd)), snapshot(state),
-          sysfs_identity(std::move(identity)) {}
+          sysfs_identity(std::move(identity)), node_path(std::move(path)) {}
     WritableTarget(const WritableTarget&) = delete;
     WritableTarget& operator=(const WritableTarget&) = delete;
     WritableTarget(WritableTarget&&) noexcept = default;
@@ -36,7 +38,7 @@ struct WritableTarget {
     bool valid() const noexcept {
         return descriptor.get() >= 0 && snapshot.device_number != 0 &&
                snapshot.capacity_bytes > 0 && !snapshot.read_only &&
-               !sysfs_identity.empty();
+               !sysfs_identity.empty() && !node_path.empty();
     }
 };
 
@@ -210,9 +212,64 @@ inline bool open_writable_target_source(dev_t expected_device,
         return false;
     }
 
-    target = WritableTarget(std::move(descriptor), admitted, sysfs_identity);
+    target = WritableTarget(std::move(descriptor), admitted, sysfs_identity,
+                            node_path);
     if (!target.valid()) {
         error = "Writable target admission returned an invalid descriptor";
+        return false;
+    }
+    return true;
+}
+
+
+inline bool revalidate_writable_target_before_first_write(
+    const WritableTarget& target, std::string& error) {
+    if (!target.valid()) {
+        error = "Writable target descriptor is not valid";
+        return false;
+    }
+
+    const dev_t expected_device =
+        static_cast<dev_t>(target.snapshot.device_number);
+    std::string current_node_path;
+    fs::path current_sysfs_identity;
+    if (!resolve_kernel_device_node(expected_device, current_node_path,
+                                    current_sysfs_identity, error)) {
+        return false;
+    }
+    if (current_node_path != target.node_path ||
+        current_sysfs_identity != target.sysfs_identity) {
+        error = "Target sysfs identity or device-node name changed before writing";
+        return false;
+    }
+    if (!inspect_block_node_path(target.node_path,
+                                 target.snapshot.device_number, error)) {
+        return false;
+    }
+
+    const auto fstat_function = [](int fd, struct stat* metadata) {
+        return ::fstat(fd, metadata);
+    };
+    const auto ioctl_function = [](int fd, unsigned long request, void* value) {
+        return ::ioctl(fd, request, value);
+    };
+    DeviceSnapshot current{};
+    if (!read_device_snapshot(target.descriptor.get(), current, error,
+                               fstat_function, ioctl_function) ||
+        !same_writable_device(target.snapshot, current)) {
+        error = "Writable target descriptor changed before the first write";
+        return false;
+    }
+    if (!validate_target_device(expected_device, error)) {
+        error = "Final DeviceGuard rejected target immediately before writing: " + error;
+        return false;
+    }
+
+    DeviceSnapshot final_snapshot{};
+    if (!read_device_snapshot(target.descriptor.get(), final_snapshot, error,
+                              fstat_function, ioctl_function) ||
+        !same_writable_device(target.snapshot, final_snapshot)) {
+        error = "Writable target descriptor changed during final pre-write validation";
         return false;
     }
     return true;
