@@ -18,7 +18,9 @@ device descriptor.
 ## Current boundary
 
 - Implemented: system-bus activation, typed read-only inspection, major/minor
-  device selection, and a hardened systemd unit.
+  device selection, a hardened systemd unit, and read-only inspection bound to
+  the opened block-device descriptor. Topology is resolved from the descriptor's
+  device number and rechecked after the descriptor snapshot is read.
 - Not implemented: Polkit write authorization, image-FD validation, descriptor-
   bound writable target handling, asynchronous write jobs, cancellation,
   progress, and read-back verification.
