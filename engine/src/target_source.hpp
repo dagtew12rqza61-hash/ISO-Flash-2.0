@@ -2,6 +2,7 @@
 
 #include "device_io.hpp"
 #include "device_snapshot.hpp"
+#include "device_guard.hpp"
 
 #include <cerrno>
 #include <cstdint>
@@ -52,16 +53,22 @@ inline bool same_target_path_identity(const std::string& path,
     return true;
 }
 
+template <typename ValidateFunction>
 inline bool open_target_source(const std::string& path,
                                std::uint64_t expected_device_number,
                                OpenedTarget& target,
-                               std::string& error) {
+                               std::string& error,
+                               ValidateFunction&& validate_device) {
     target = OpenedTarget{};
     if (expected_device_number == 0) {
         error = "A nonzero expected block-device identity is required";
         return false;
     }
     if (!same_target_path_identity(path, expected_device_number, error)) {
+        return false;
+    }
+    if (!validate_device(static_cast<dev_t>(expected_device_number), error)) {
+        error = "Target failed preliminary safety inspection: " + error;
         return false;
     }
 
@@ -95,6 +102,10 @@ inline bool open_target_source(const std::string& path,
         error = "Target device is read-only";
         return false;
     }
+    if (!validate_device(static_cast<dev_t>(admitted.device_number), error)) {
+        error = "Opened target failed descriptor-bound safety inspection: " + error;
+        return false;
+    }
     if (!same_target_path_identity(path, admitted.device_number, error)) {
         return false;
     }
@@ -109,9 +120,24 @@ inline bool open_target_source(const std::string& path,
         error = "Target identity, capacity, or writable state changed during admission";
         return false;
     }
+    if (!validate_device(static_cast<dev_t>(current.device_number), error)) {
+        error = "Opened target failed final safety revalidation: " + error;
+        return false;
+    }
 
     target = OpenedTarget(std::move(descriptor), admitted);
     return target.valid();
+}
+
+inline bool open_target_source(const std::string& path,
+                               std::uint64_t expected_device_number,
+                               OpenedTarget& target,
+                               std::string& error) {
+    return open_target_source(
+        path, expected_device_number, target, error,
+        [](dev_t device_number, std::string& validation_error) {
+            return validate_target_device(device_number, validation_error);
+        });
 }
 
 }  // namespace iso_flash
