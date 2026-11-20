@@ -53,3 +53,10 @@ endif()
 if(NOT service_source MATCHES "g_unix_fd_list_get")
   message(FATAL_ERROR "ValidateImage must receive the passed descriptor through GUnixFDList")
 endif()
+
+if(NOT service_source MATCHES "NameOwnerChanged" OR
+   NOT service_source MATCHES "g_cancellable_cancel" OR
+   NOT service_source MATCHES "g_cancellable_is_cancelled" OR
+   NOT service_source MATCHES "g_dbus_connection_signal_unsubscribe")
+  message(FATAL_ERROR "Image hashing must be cancelled and disconnected from the D-Bus caller lifecycle")
+endif()
