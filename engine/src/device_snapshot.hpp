@@ -22,6 +22,13 @@ inline bool same_writable_device(const DeviceSnapshot& original,
            !original.read_only && !current.read_only;
 }
 
+inline bool same_opened_target(const DeviceSnapshot& original,
+                               std::uint64_t path_device_number,
+                               const DeviceSnapshot& opened_current) {
+    return original.device_number == path_device_number &&
+           same_writable_device(original, opened_current);
+}
+
 template <typename FstatFunction, typename IoctlFunction>
 bool read_device_snapshot(int fd, DeviceSnapshot& snapshot, std::string& error,
                           FstatFunction&& fstat_function,
