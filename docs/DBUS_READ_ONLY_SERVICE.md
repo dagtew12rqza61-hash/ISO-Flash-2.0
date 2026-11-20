@@ -21,7 +21,11 @@ rejected with a retryable busy response. The lease is released automatically
 when the asynchronous task data is destroyed, including completion and task
 setup failure paths, preventing unbounded hashing tasks from exhausting the
 privileged service. The limiter has a dedicated concurrency and lease-lifecycle
-unit test.
+unit test. The service also watches the caller's unique D-Bus name; when that
+connection disappears, a GCancellable stops hashing at the next bounded
+1 MiB read boundary. The cancellation subscription is removed with task-data
+cleanup, and the received descriptor and capacity lease are released on the
+same lifecycle path.
 No caller-supplied path is opened.
 The method does not write to the image or any target device.
 
@@ -37,7 +41,7 @@ writable device descriptor.
   descriptor-bound image validation, Unix-FD reception, read-only access-mode
   enforcement, SHA-256 validation, and a hardened systemd unit.
 - Not implemented: Polkit write authorization, writable target opening,
-  service-integrated asynchronous write jobs, cancellation, progress, and
+  service-integrated asynchronous write jobs, write-job cancellation, progress, and
   read-back verification.
 - The broader method contract in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml)
   remains a future protocol specification. The service does not export
