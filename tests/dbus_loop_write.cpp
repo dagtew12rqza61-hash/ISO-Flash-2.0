@@ -205,7 +205,7 @@ bool cancel_write(GDBusConnection* connection, std::uint64_t job_id,
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
+    if (argc != 4) {
         std::cerr << "Usage: test_dbus_loop_write IMAGE DEVICE BACKING_FILE\n";
         return 2;
     }
