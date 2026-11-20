@@ -13,16 +13,6 @@
 bool inspect_target_read_only(const std::string& device, std::string& error,
                               std::uint64_t& capacity_bytes) {
     capacity_bytes = 0;
-    if (!validate_target(device, error)) {
-        return false;
-    }
-
-    struct stat path_before{};
-    if (::stat(device.c_str(), &path_before) != 0 || !S_ISBLK(path_before.st_mode)) {
-        error = "Target path changed or is no longer a block device";
-        return false;
-    }
-
     int raw_fd = -1;
     const auto open_function = [](const char* path, int flags) {
         return ::open(path, flags);
@@ -42,8 +32,8 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     iso_flash::DeviceSnapshot original{};
     bool ok = iso_flash::read_device_snapshot(
         fd.get(), original, error, fstat_function, ioctl_function);
-    if (ok && original.device_number != static_cast<std::uint64_t>(path_before.st_rdev)) {
-        error = "Opened device identity does not match the validated path";
+    if (ok && !validate_target_device(static_cast<dev_t>(original.device_number), error)) {
+        error = "Opened device failed descriptor-bound safety inspection: " + error;
         ok = false;
     }
     if (ok && !iso_flash::same_writable_device(original, original)) {
@@ -51,16 +41,17 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         ok = false;
     }
 
-    if (ok && !validate_target(device, error)) {
-        error = "Target failed safety revalidation after open: " + error;
+    if (ok && !validate_target_device(static_cast<dev_t>(original.device_number), error)) {
+        error = "Opened device failed safety revalidation: " + error;
         ok = false;
     }
 
     struct stat path_after{};
     iso_flash::DeviceSnapshot opened_after{};
     if (ok && (::stat(device.c_str(), &path_after) != 0 ||
-               !S_ISBLK(path_after.st_mode))) {
-        error = "Cannot revalidate target path after opening";
+               !S_ISBLK(path_after.st_mode) ||
+               static_cast<std::uint64_t>(path_after.st_rdev) != original.device_number)) {
+        error = "Target path no longer identifies the opened block device";
         ok = false;
     }
     if (ok && !iso_flash::read_device_snapshot(
