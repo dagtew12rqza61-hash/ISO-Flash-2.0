@@ -21,9 +21,7 @@ constexpr const char* kXml = R"xml(
       <arg type="a{ss}" direction="in"/>
       <arg type="u" direction="in"/>
       <arg type="s" direction="in"/>
-      <arg type="b" direction="out"/>
-      <arg type="b" direction="out"/>
-      <arg type="a{ss}" direction="out"/>
+      <arg type="(bba{ss})" direction="out"/>
     </method>
   </interface>
 </node>
@@ -92,7 +90,7 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
     g_variant_builder_init(&result_details, G_VARIANT_TYPE("a{ss}"));
     g_dbus_method_invocation_return_value(
         invocation,
-        g_variant_new("(bb@a{ss})", mode != 0, FALSE,
+        g_variant_new("((bb@a{ss}))", mode != 0, FALSE,
                       g_variant_builder_end(&result_details)));
 }
 
