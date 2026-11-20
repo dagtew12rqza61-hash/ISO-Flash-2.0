@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device_guard.hpp"
 #include "device_io.hpp"
 #include "device_snapshot.hpp"
 
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
