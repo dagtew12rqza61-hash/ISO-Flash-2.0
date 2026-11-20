@@ -43,7 +43,11 @@ bool read_device_snapshot(int fd, DeviceSnapshot& snapshot, std::string& error,
                           IoctlFunction&& ioctl_function) {
     snapshot = {};
     struct stat metadata{};
-    if (fstat_function(fd, &metadata) != 0) {
+    int fstat_result = -1;
+    do {
+        fstat_result = fstat_function(fd, &metadata);
+    } while (fstat_result != 0 && errno == EINTR);
+    if (fstat_result != 0) {
         const int fstat_error = errno;
         error = describe_device_error("Cannot inspect opened target descriptor", fstat_error);
         return false;
@@ -55,12 +59,19 @@ bool read_device_snapshot(int fd, DeviceSnapshot& snapshot, std::string& error,
 
     std::uint64_t capacity_bytes = 0;
     int read_only = 1;
-    if (ioctl_function(fd, BLKGETSIZE64, &capacity_bytes) != 0) {
+    int ioctl_result = -1;
+    do {
+        ioctl_result = ioctl_function(fd, BLKGETSIZE64, &capacity_bytes);
+    } while (ioctl_result != 0 && errno == EINTR);
+    if (ioctl_result != 0) {
         const int ioctl_error = errno;
         error = describe_device_error("Cannot read target capacity", ioctl_error);
         return false;
     }
-    if (ioctl_function(fd, BLKROGET, &read_only) != 0) {
+    do {
+        ioctl_result = ioctl_function(fd, BLKROGET, &read_only);
+    } while (ioctl_result != 0 && errno == EINTR);
+    if (ioctl_result != 0) {
         const int ioctl_error = errno;
         error = describe_device_error("Cannot read target read-only state", ioctl_error);
         return false;
