@@ -2,8 +2,6 @@
 #include "mountinfo.hpp"
 #include "block_topology.hpp"
 
-#include <charconv>
-#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -21,12 +19,6 @@ static std::string first_line(const fs::path& p) {
     std::string s;
     std::getline(f, s);
     return s;
-}
-static bool valid_sector_count(const std::string& value) {
-    std::uint64_t sectors = 0;
-    const auto result = std::from_chars(value.data(), value.data() + value.size(), sectors);
-    return !value.empty() && result.ec == std::errc{} &&
-           result.ptr == value.data() + value.size() && sectors > 0;
 }
 
 static fs::path sys_device(dev_t number, std::error_code& ec) {
@@ -74,7 +66,7 @@ bool validate_target(const std::string& device, std::string& error) {
         return false;
     }
     const std::string sectors = first_line(real / "size");
-    if (!valid_sector_count(sectors)) {
+    if (!iso_flash::valid_sector_count(sectors)) {
         error = "Cannot verify a valid non-zero target capacity";
         return false;
     }
