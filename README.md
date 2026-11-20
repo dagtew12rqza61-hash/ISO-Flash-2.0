@@ -24,6 +24,7 @@ cmake --build build --parallel 2
 - [x] Qt 6 desktop shell
 - [x] Initial Linux block-device guard prototype
 - [x] Synthetic sysfs dependency traversal regression tests
+- [x] Fail-closed sysfs holders metadata inspection and regression tests
 - [x] Strict sysfs capacity metadata parsing
 - [x] Injected block-device metadata/read failure tests (`EIO`, `ENODEV`)
 - [x] Read-only open failure tests (`EACCES`, `ENODEV`)
