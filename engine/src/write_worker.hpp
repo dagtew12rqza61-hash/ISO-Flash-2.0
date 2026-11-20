@@ -39,6 +39,8 @@ public:
     WriteWorker(WriteWorker&&) = delete;
     WriteWorker& operator=(WriteWorker&&) = delete;
 
+    std::uint64_t id() const noexcept { return job_.id(); }
+
     ~WriteWorker() {
         cancel();
         join();
