@@ -48,6 +48,11 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         ok = false;
     }
 
+    if (ok && !validate_target(device, error)) {
+        error = "Target failed safety revalidation after open: " + error;
+        ok = false;
+    }
+
     struct stat path_after{};
     struct stat opened_after{};
     std::uint64_t capacity_after = 0;
