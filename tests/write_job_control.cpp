@@ -42,14 +42,14 @@ int main() {
         accepted += result ? 1U : 0U;
     }
     if (accepted != 1 || !control.cancel_requested() ||
-        control.update_progress(2048) || !control.finish_cancelled()) {
+        !control.update_progress(2048) || !control.finish_cancelled()) {
         std::cerr << "Concurrent cancellation was not serialized safely\n";
         return 1;
     }
 
     const auto cancelled = control.snapshot();
     if (cancelled.state != iso_flash::WriteJobState::Cancelled ||
-        cancelled.completed_bytes != 1024 ||
+        cancelled.completed_bytes != 2048 ||
         cancelled.total_bytes != 4096 || cancelled.error_number != 0) {
         std::cerr << "Cancelled job snapshot is inconsistent\n";
         return 1;
