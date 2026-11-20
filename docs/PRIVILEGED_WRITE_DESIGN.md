@@ -18,7 +18,7 @@ The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.
 4. After authorization, the service resolves the device again and opens `/dev/block/MAJOR:MINOR` itself using `O_RDWR | O_CLOEXEC | O_EXCL | O_NOFOLLOW | O_NONBLOCK`. It verifies with `fstat` that the descriptor is a block device and that `st_rdev` matches the requested major/minor pair.
 5. With that descriptor held open, the service repeats all safety checks against the descriptor's `st_rdev`, queries `BLKGETSIZE64` and `BLKROGET`, and refuses any mismatch. It does not close and reopen the device by pathname between validation and writing.
 6. Only after all checks pass may the service create a write job. The write job owns the exact device descriptor and image descriptor until completion or cancellation. The GUI receives a job identifier and progress events; it never receives a writable device descriptor.
-7. Cancellation stops new writes, waits for the in-flight write to finish, calls `fsync` where appropriate, reports the final state, and releases descriptors. Disconnecting the GUI must not silently restart or detach a destructive job.
+7. Cancellation prevents scheduling additional writes and waits for any in-flight write to return before finalizing the job. It cannot roll back bytes already written: a cancelled operation must report that the target may contain a partial, non-bootable image. Syncing is best-effort and must not be represented as rollback. Disconnecting the GUI must not silently restart or detach a destructive job.
 
 ## Required checks before enabling writes
 
@@ -40,3 +40,9 @@ The service should be installed root-owned and non-writable by unprivileged user
 ## Current implementation status
 
 The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit write policy, descriptor-passing write request, writable device open, asynchronous job manager, and physical write path are not implemented. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
+
+## Write-job state model (implemented, not connected to a writer)
+
+The engine now contains a pure, header-only state transition model in `engine/src/write_job_state.hpp`. Its states are `Queued`, `Validating`, `Writing`, `Cancelling`, and terminal states `Completed`, `Failed`, `DeviceLost`, and `Cancelled`. Invalid transitions are rejected without mutating the current state. Cancellation while queued terminates immediately; cancellation during validation or writing enters `Cancelling` and must be finalized by the worker only after it has stopped scheduling writes and handled any in-flight operation. Device loss is terminal.
+
+This model is unit-tested, but it is not yet an asynchronous job manager, does not own descriptors, and is not exposed over D-Bus. No physical write operation is enabled. A cancelled or device-lost job must explicitly report possible partial target contents; cancellation is not an undo operation.
