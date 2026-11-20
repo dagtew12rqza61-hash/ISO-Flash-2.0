@@ -2,9 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <system_error>
-#include <set>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 
@@ -66,6 +66,9 @@ static bool depends_on(const fs::path& current, const fs::path& target,
         if (!verified) {
             return false;
         }
+    }
+    if (ec) {
+        verified = false;
     }
     return false;
 }
