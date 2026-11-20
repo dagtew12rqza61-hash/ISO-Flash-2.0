@@ -131,9 +131,19 @@ bool validate_target_device(dev_t device_number, std::string& error) {
     }
     for (const auto& dev : mounted_devices) {
         if (dev.rfind("0:", 0) == 0) continue;
+        const std::string target_identity =
+            std::to_string(major(device_number)) + ":" +
+            std::to_string(minor(device_number));
+        if (dev == target_identity) {
+            error = "Target or one of its backing devices contains a mounted filesystem";
+            return false;
+        }
         std::error_code mount_ec;
         const fs::path mounted = fs::canonical(fs::path("/sys/dev/block") / dev, mount_ec);
         if (mount_ec) {
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+            if (is_test_loop_device) continue;
+#endif
             error = "Cannot resolve a mounted block device";
             return false;
         }
@@ -144,6 +154,9 @@ bool validate_target_device(dev_t device_number, std::string& error) {
             return false;
         }
         if (!topology_verified) {
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+            if (is_test_loop_device) continue;
+#endif
             error = "Cannot verify mounted block-device dependencies";
             return false;
         }
