@@ -43,15 +43,15 @@ int main() {
     }
     {
         std::istringstream input(
-            "Filename\\t\\t\\t\\tType\\t\\tSize\\t\\tUsed\\t\\tPriority\\n"
-            "/dev/loop9\\tpartition\\t1024\\t0\\t-2\\n");
+            "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
+            "/dev/loop9\tpartition\t1024\t0\t-2\n");
         std::vector<std::string> names;
         if (!iso_flash::parse_swapinfo(input, names) ||
             names.size() != 1 || names[0] != "/dev/loop9") return 6;
     }
     {
         std::istringstream input(
-            "Filename Type Size Used Other\\n");
+            "Filename Type Size Used Other\n");
         std::vector<std::string> names;
         if (iso_flash::parse_swapinfo(input, names) || !names.empty()) return 7;
     }
