@@ -1,70 +1,51 @@
 # ISO Flash 2.0
 
-C++20 / Qt 6 Linux USB image writer project.
+C++20 / Qt 6 application for writing hybrid Linux ISO images to USB drives on Linux.
 
-## Development status
+## Current development status
 
-**Early development — physical writing is deliberately disabled.** The current GUI can select an ISO and list removable block-device candidates. The writer's `--check DEVICE` mode performs read-only inspection; the destructive `--write` mode exits without opening or modifying any device.
+**The production package is still fail-closed: physical writes are disabled by default.**
 
-A narrow system D-Bus service now exposes read-only target inspection by block-device major/minor number. It is system-bus activated and runs under a hardened systemd unit. It does not expose a write method and does not accept arbitrary device paths. See [docs/DBUS_READ_ONLY_SERVICE.md](docs/DBUS_READ_ONLY_SERVICE.md).
+The privileged D-Bus service and GUI are connected. The service implements ISO descriptor transfer, caller identity checks, Polkit authorization, post-authorization target admission, owner-bound write jobs, cancellation, progress/completion signals, bounded writes, fsync, and SHA-256 read-back verification.
 
-This is not yet a write authorization boundary. Polkit write authorization, descriptor-bound writable-device checks, full bidirectional block topology validation, hot-unplug race handling, asynchronous job ownership, cancellation, and read-back verification remain incomplete. In-process worker, cancellation, progress, and job-registry primitives are implemented and tested, but they are not connected to D-Bus or real device I/O. Read-only inspection now distinguishes common disconnect and I/O failures in its diagnostics, but this is not a substitute for a complete hot-unplug-safe write state machine. No physical-media write should be enabled until these controls and destructive-path tests pass.
+The destructive path is enabled only in a separate CI test executable. That executable is compiled with explicit test-only definitions which allow file-backed loop devices; the normal packaged service is compiled without ISO_FLASH_ENABLE_WRITES and returns WRITE_DISABLED from StartWrite. Do not use this development package to write physical media.
 
-## Build (Ubuntu 24.04 / 26.04 amd64)
+## Implemented components
 
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel 2
-```
+- Qt 6 GUI selects ISO files and displays only USB candidates accepted by the privileged service.
+- GUI passes the already-open ISO descriptor through D-Bus Unix FD; it never sends an arbitrary device path and never runs as root.
+- System D-Bus service obtains caller UID/PID from the bus daemon and checks the live process UID and start-time identity before and after Polkit authorization.
+- Polkit authorization uses the invocation's unique D-Bus sender as a system-bus-name subject and the fixed action org.iso_flash.write.
+- Target admission resolves major/minor through sysfs, validates USB transport and safety metadata, opens the writable device with fixed restrictive flags, and binds the descriptor to its device identity and capacity.
+- WriteJobRegistry binds each job to its D-Bus owner. Only the owner may cancel it; caller disappearance requests cancellation.
+- D-Bus Progress and Finished signals are sent to the owning client.
+- The write operation handles short writes and EINTR, tracks partial progress, calls fsync, and verifies the written byte range using SHA-256 read-back.
+- Device errors are terminal; a failed or cancelled write can leave a partially written, unusable target.
+- CI builds and installs both Debian packages, checks package removal/reinstallation, starts the real system Polkit service, and exercises the enabled write path only against disposable file-backed loop devices.
 
-## Current milestones
+## Build
 
-- [x] Qt 6 desktop shell
-- [x] Initial Linux block-device guard prototype
-- [x] Synthetic sysfs dependency traversal regression tests
-- [x] Fail-closed sysfs holders metadata inspection and regression tests
-- [x] Strict sysfs capacity metadata parsing
-- [x] Injected block-device metadata/read failure tests (`EIO`, `ENODEV`)
-- [x] Read-only open failure tests (`EACCES`, `ENODEV`)
-- [x] Actionable read-only diagnostics for common disconnect, permission, busy, and I/O errors
-- [x] EINTR retry on read-only target open
-- [x] RAII file-descriptor ownership and cleanup tests
-- [x] Snapshot revalidation tests for device replacement, capacity changes, and read-only transitions
-- [x] Read-only ISO descriptor validation (regular file, non-empty, no symlink)
-- [x] ISO source identity/size/mtime/ctime snapshot and mutation-detection tests
-- [x] Fail-closed handling for filesystem metadata exceptions
-- [x] Separate writer executable boundary
-- [x] Disable physical writes in development builds
-- [x] Initial read-only system D-Bus inspection service
-- [x] System-bus activation and hardened systemd unit
-- [x] Documented D-Bus + Polkit privileged-write security architecture
-- [ ] Polkit-authorized write service
-- [ ] Descriptor-bound writable device validation
-- [ ] Complete bidirectional block-device topology validation
-- [x] In-process asynchronous worker, cancellation, progress, and job registry primitives (injected callbacks only)
-- [x] Cooperative cancellation propagated into asynchronous validation callbacks
-- [ ] D-Bus job lifecycle integration and Polkit authorization
-- [ ] Descriptor-bound image and writable-device validation
-- [ ] Hot-unplug-safe physical writing with safe cancellation and progress
-- [x] Standalone SHA-256 hashing from the open ISO descriptor with before/after metadata checks and fault-injection tests
-- [x] Reusable worker validation object binds SHA-256 to an admission-time image snapshot and retains the digest for the following operation callback (in-process test only)
-- [x] Move-only ISO admission object transfers the read-only descriptor and original snapshot together into a write-job owner
-- [x] Move-only read-only target admission object binds the opened block-device descriptor to its major/minor identity and capacity/read-only snapshot; full DeviceGuard runs before opening, against the opened descriptor identity, and during final revalidation (synthetic descriptor ownership test only)
-- [x] CI registers and runs 17 C++ regression executables plus 3 safety-contract tests (20 total)
-- [ ] Hash integration into the privileged write protocol and read-back verification
-- [x] Loop-device rejection smoke test (no writes)
-- [ ] Destructive-path tests using disposable loop devices
-- [ ] Separate Windows installer media preparation
-- [ ] Verified Debian packages and signed release
+Ubuntu 24.04 / 26.04 amd64:
 
-Raw imaging is intended for hybrid Linux ISO images. Windows installer ISO preparation requires a separate implementation and is not currently supported.
+    sudo apt update
+    sudo apt install -y build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel 2
+    ctest --test-dir build --output-on-failure
 
-## Safety
+## Safety and release status
 
-Do not use this development build to modify physical media. Never select a drive containing data you need. A successful build is not proof of boot compatibility or production safety.
+- Production physical writing remains disabled until the complete loop-device suite, unplug/error-path tests, GUI integration, and package checks pass.
+- CI-only loop-device permission is isolated to iso-flash-service-loop-test; it is not compiled into the packaged service.
+- No CI test writes to a physical drive.
+- A cancelled or interrupted operation cannot roll back bytes already written.
+- Only hybrid Linux ISO raw imaging is in scope. Windows installer ISO preparation requires a separate FAT32/NTFS-aware implementation.
+- No GitHub Release has been published. Release preparation remains gated on a green final CI run and review of the destructive-path tests.
 
-## License
+## Repository layout
 
-MIT
+- engine/ — device safety, D-Bus service, Polkit, write engine
+- gui/ — Qt desktop application
+- tests/ — unit, contract, D-Bus, Polkit, and loop-device integration tests
+- packaging/ — Debian package metadata, D-Bus, systemd, and Polkit files
+- docs/ — security and D-Bus interface documentation
