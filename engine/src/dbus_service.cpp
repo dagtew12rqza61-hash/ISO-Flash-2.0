@@ -10,6 +10,7 @@
 #include <new>
 #include <string>
 #include <sys/sysmacros.h>
+#include <unistd.h>
 
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
