@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.iso_flash.Manager1
+Exec=/usr/lib/iso-flash/iso-flash-service
+User=root
+SystemdService=iso-flash.service
