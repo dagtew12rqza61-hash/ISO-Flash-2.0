@@ -8,7 +8,7 @@ C++20 / Qt 6 Linux USB image writer project.
 
 A narrow system D-Bus service now exposes read-only target inspection by block-device major/minor number. It is system-bus activated and runs under a hardened systemd unit. It does not expose a write method and does not accept arbitrary device paths. See [docs/DBUS_READ_ONLY_SERVICE.md](docs/DBUS_READ_ONLY_SERVICE.md).
 
-This is not yet a write authorization boundary. Polkit write authorization, descriptor-bound writable-device checks, full bidirectional block topology validation, hot-unplug race handling, asynchronous job ownership, cancellation, and read-back verification remain incomplete. Read-only inspection now distinguishes common disconnect and I/O failures in its diagnostics, but this is not a substitute for a complete hot-unplug-safe write state machine. No physical-media write should be enabled until these controls and destructive-path tests pass.
+This is not yet a write authorization boundary. Polkit write authorization, descriptor-bound writable-device checks, full bidirectional block topology validation, hot-unplug race handling, asynchronous job ownership, cancellation, and read-back verification remain incomplete. In-process worker, cancellation, progress, and job-registry primitives are implemented and tested, but they are not connected to D-Bus or real device I/O. Read-only inspection now distinguishes common disconnect and I/O failures in its diagnostics, but this is not a substitute for a complete hot-unplug-safe write state machine. No physical-media write should be enabled until these controls and destructive-path tests pass.
 
 ## Build (Ubuntu 24.04 / 26.04 amd64)
 
@@ -41,7 +41,10 @@ cmake --build build --parallel 2
 - [ ] Polkit-authorized write service
 - [ ] Descriptor-bound writable device validation
 - [ ] Complete bidirectional block-device topology validation
-- [ ] Hot-unplug-safe asynchronous writing with safe cancellation and progress
+- [x] In-process asynchronous worker, cancellation, progress, and job registry primitives (injected callbacks only)
+- [ ] D-Bus job lifecycle integration and Polkit authorization
+- [ ] Descriptor-bound image and writable-device validation
+- [ ] Hot-unplug-safe physical writing with safe cancellation and progress
 - [ ] SHA-256 and read-back verification
 - [x] Loop-device rejection smoke test (no writes)
 - [ ] Destructive-path tests using disposable loop devices
