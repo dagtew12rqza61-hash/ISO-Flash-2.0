@@ -1,3 +1,5 @@
+find_package(Threads REQUIRED)
+
 add_test(
   NAME writer_refuses_destructive_operation
   COMMAND ${CMAKE_COMMAND}
