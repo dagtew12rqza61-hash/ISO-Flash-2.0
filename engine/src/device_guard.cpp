@@ -88,6 +88,9 @@ bool validate_target_device(dev_t device_number, std::string& error) {
         error = "Cannot identify the system root device";
         return false;
     }
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+    if (!is_test_loop_device) {
+#endif
     const fs::path root_sys = sys_device(root.st_dev, ec);
     if (ec) {
 #ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
@@ -112,6 +115,9 @@ bool validate_target_device(dev_t device_number, std::string& error) {
             return false;
         }
     }
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+    }
+#endif
 
     std::ifstream mounts("/proc/self/mountinfo");
     if (!mounts) {
