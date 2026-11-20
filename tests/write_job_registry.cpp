@@ -1,6 +1,8 @@
 #include "write_job_registry.hpp"
 
+#include <cerrno>
 #include <cstdint>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -61,8 +63,12 @@ int main() {
         return 1;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    if (registry.reap_terminal() != 1 || registry.size() != 0) {
+    std::size_t reaped = 0;
+    for (int attempt = 0; attempt < 100 && reaped == 0; ++attempt) {
+        reaped = registry.reap_terminal();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (reaped != 1 || registry.size() != 0) {
         std::cerr << "Registry did not reap a completed job\\n";
         return 1;
     }
@@ -71,33 +77,35 @@ int main() {
         return 1;
     }
 
-    if (!registry.add(std::make_unique<iso_flash::WriteWorker>(
-            make_job(42), 8,
-            [](iso_flash::WriteJob&) { return 0; },
-            [](iso_flash::WriteJob&,
-               const iso_flash::WriteWorker::ProgressCallback&,
-               const iso_flash::WriteWorker::CancelCallback&) {
+    std::promise<void> operation_entered;
+    std::promise<void> release_operation;
+    const auto release_signal = release_operation.get_future().share();
+    auto cancellable = std::make_unique<iso_flash::WriteWorker>(
+        make_job(42), 8,
+        [](iso_flash::WriteJob&) { return 0; },
+        [&operation_entered, release_signal](
+            iso_flash::WriteJob&,
+            const iso_flash::WriteWorker::ProgressCallback&,
+            const iso_flash::WriteWorker::CancelCallback& cancelled) {
+            operation_entered.set_value();
+            release_signal.wait();
+            if (cancelled()) {
                 return iso_flash::WriteOperationResult{
                     iso_flash::WriteIoStatus::Cancelled, 0, 0};
-            }))) {
-        std::cerr << "Registry rejected second unique job\n";
+            }
+            return iso_flash::WriteOperationResult{
+                iso_flash::WriteIoStatus::Completed, 8, 0};
+        });
+    if (!registry.add(std::move(cancellable))) {
+        std::cerr << "Registry rejected second unique job\\n";
         return 1;
     }
+    operation_entered.get_future().wait();
     if (!registry.cancel(42) || registry.cancel(999)) {
-        std::cerr << "Registry cancellation lookup failed\n";
+        std::cerr << "Registry cancellation lookup failed\\n";
         return 1;
     }
-
-    auto worker = make_worker(43);
-    if (!registry.add(std::move(worker))) {
-        std::cerr << "Registry rejected third job\n";
-        return 1;
-    }
-
-    if (!registry.cancel(43)) {
-        std::cerr << "Registry did not forward cancellation\n";
-        return 1;
-    }
+    release_operation.set_value();
 
     registry.shutdown();
     if (registry.size() != 0 || registry.add(make_worker(44))) {
