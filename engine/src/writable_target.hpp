@@ -272,6 +272,18 @@ inline bool revalidate_writable_target_before_first_write(
         error = "Writable target descriptor changed during final pre-write validation";
         return false;
     }
+
+    std::string last_node_path;
+    fs::path last_sysfs_identity;
+    if (!resolve_kernel_device_node(expected_device, last_node_path,
+                                    last_sysfs_identity, error) ||
+        last_node_path != target.node_path ||
+        last_sysfs_identity != target.sysfs_identity ||
+        !inspect_block_node_path(target.node_path,
+                                 target.snapshot.device_number, error)) {
+        error = "Target identity changed at the final pre-write boundary";
+        return false;
+    }
     return true;
 }
 
