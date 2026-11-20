@@ -17,7 +17,12 @@ int main() {
         iso_flash::same_writable_device(initial, resized) ||
         iso_flash::same_writable_device(initial, readonly) ||
         iso_flash::same_writable_device(initial, zero_capacity) ||
-        iso_flash::same_writable_device(zero_capacity, zero_capacity)) {
+        iso_flash::same_writable_device(zero_capacity, zero_capacity) ||
+        !iso_flash::same_opened_target(initial, initial.device_number, unchanged) ||
+        iso_flash::same_opened_target(initial, replaced.device_number, unchanged) ||
+        iso_flash::same_opened_target(initial, initial.device_number, replaced) ||
+        iso_flash::same_opened_target(initial, initial.device_number, resized) ||
+        iso_flash::same_opened_target(initial, initial.device_number, readonly)) {
         std::cerr << "Device snapshot identity validation failed\n";
         return 1;
     }
