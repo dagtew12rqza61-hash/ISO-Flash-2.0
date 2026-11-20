@@ -53,9 +53,8 @@ bool validate_target_device(dev_t device_number, std::string& error) {
         return false;
     }
     const bool has_usb_transport = has_usb_transport_ancestor(real);
-    bool is_test_loop_device = false;
 #ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
-    is_test_loop_device =
+    const bool is_test_loop_device =
         real.parent_path() == fs::path("/sys/devices/virtual/block") &&
         real.filename().string().rfind("loop", 0) == 0 &&
         fs::is_directory(real / "loop");
