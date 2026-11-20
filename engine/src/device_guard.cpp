@@ -1,4 +1,5 @@
 #include "device_guard.hpp"
+#include "mountinfo.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -143,36 +144,28 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Cannot inspect mounted filesystems";
         return false;
     }
-    std::string line;
-    while (std::getline(mounts, line)) {
-        const auto sep = line.find(" - ");
-        if (sep == std::string::npos) continue;
-        const auto first = line.substr(0, sep);
-        const auto a = first.find(' ');
-        if (a == std::string::npos) continue;
-        const auto b = first.find(' ', a + 1);
-        if (b == std::string::npos) continue;
-        const auto c = first.find(' ', b + 1);
-        if (c == std::string::npos) continue;
-        const std::string dev = first.substr(b + 1, c - b - 1);
+    std::vector<std::string> mounted_devices;
+    if (!iso_flash::parse_mountinfo(mounts, mounted_devices)) {
+        error = "Cannot parse complete mounted filesystem metadata";
+        return false;
+    }
+    for (const auto& dev : mounted_devices) {
         std::error_code mount_ec;
         const fs::path mounted = fs::canonical(fs::path("/sys/dev/block") / dev, mount_ec);
-        if (!mount_ec) {
-            bool topology_verified = true;
-            std::set<std::string> visited;
-            if (depends_on(mounted, real, topology_verified, visited)) {
-                error = "Target or one of its backing devices contains a mounted filesystem";
-                return false;
-            }
-            if (!topology_verified) {
-                error = "Cannot verify mounted block-device dependencies";
-                return false;
-            }
+        if (mount_ec) {
+            error = "Cannot resolve a mounted block device";
+            return false;
         }
-    }
-    if (mounts.bad()) {
-        error = "Failed while reading mounted filesystem metadata";
-        return false;
+        bool topology_verified = true;
+        std::set<std::string> visited;
+        if (depends_on(mounted, real, topology_verified, visited)) {
+            error = "Target or one of its backing devices contains a mounted filesystem";
+            return false;
+        }
+        if (!topology_verified) {
+            error = "Cannot verify mounted block-device dependencies";
+            return false;
+        }
     }
 
     std::ifstream swaps("/proc/swaps");
