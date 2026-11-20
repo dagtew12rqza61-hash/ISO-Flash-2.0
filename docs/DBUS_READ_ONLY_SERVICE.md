@@ -20,11 +20,13 @@ device descriptor.
 
 - Implemented: system-bus activation, typed read-only inspection, major/minor
   device selection, a hardened systemd unit, and read-only inspection bound to
-  the opened block-device descriptor. Topology is resolved from the descriptor's
-  device number and rechecked after the descriptor snapshot is read.
-- Not implemented: Polkit write authorization, image-FD validation, descriptor-
-  bound writable target handling, asynchronous write jobs, cancellation,
-  progress, and read-back verification.
+  the opened block-device descriptor. The reusable target-admission helper now
+  runs the full DeviceGuard before opening, after reading the opened descriptor,
+  and during final snapshot revalidation. A contract test enforces these checks.
+- Not implemented: Polkit write authorization, image-FD transfer through D-Bus,
+  writable target opening, service-integrated asynchronous write jobs,
+  cancellation, progress, and read-back verification. The reusable admission
+  helper still opens targets read-only and is not a write authorization boundary.
 - The broader method contract in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml)
   remains a future protocol specification. The service does not export
   `StartWrite` or `CancelWrite`.
