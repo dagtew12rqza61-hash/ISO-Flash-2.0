@@ -1,3 +1,5 @@
+set(SERVICE_SOURCE "${CMAKE_SOURCE_DIR}/engine/src/dbus_service.cpp")
+
 if(NOT DEFINED SERVICE_SOURCE OR NOT EXISTS "${SERVICE_SOURCE}")
   message(FATAL_ERROR "D-Bus service source is missing")
 endif()
