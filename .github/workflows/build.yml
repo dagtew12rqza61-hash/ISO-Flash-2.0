@@ -168,6 +168,7 @@ jobs:
             echo "Qt GUI did not remain alive during the offscreen D-Bus smoke test" >&2
             exit 1
           fi
+          build/tests/test_qt_dbus_fd_client
           build/tests/test_polkit_real_integration
           sudo systemctl restart iso-flash.service
           sudo systemctl is-active --quiet iso-flash.service
