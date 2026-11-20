@@ -1,0 +1,9 @@
+Package: iso-flash
+Version: 2.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: ISO Flash Project
+Depends: iso-flash-engine (= 2.0.0), libqt6widgets6, polkitd
+Description: ISO Flash graphical USB image writer
+ Qt6 desktop application for Linux ISO images.
