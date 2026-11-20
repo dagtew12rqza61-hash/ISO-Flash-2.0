@@ -24,46 +24,46 @@ public:
     WriteJobControl(const WriteJobControl&) = delete;
     WriteJobControl& operator=(const WriteJobControl&) = delete;
 
-    bool begin_validation() noexcept {
+    bool begin_validation() {
         const std::lock_guard<std::mutex> lock(mutex_);
         return progress_.valid() &&
                transition(state_, WriteJobState::Validating);
     }
 
-    bool begin_writing() noexcept {
+    bool begin_writing() {
         const std::lock_guard<std::mutex> lock(mutex_);
         return transition(state_, WriteJobState::Writing);
     }
 
-    bool request_cancel() noexcept {
+    bool request_cancel() {
         const std::lock_guard<std::mutex> lock(mutex_);
         return iso_flash::request_cancel(state_);
     }
 
-    bool cancel_requested() const noexcept {
+    bool cancel_requested() const {
         const std::lock_guard<std::mutex> lock(mutex_);
         return state_ == WriteJobState::Cancelling ||
                state_ == WriteJobState::Cancelled;
     }
 
-    bool update_progress(std::uint64_t completed_bytes) noexcept {
+    bool update_progress(std::uint64_t completed_bytes) {
         const std::lock_guard<std::mutex> lock(mutex_);
         return state_ == WriteJobState::Writing &&
                progress_.update(completed_bytes);
     }
 
-    bool finish_completed() noexcept {
+    bool finish_completed() {
         const std::lock_guard<std::mutex> lock(mutex_);
         return progress_.complete() &&
                transition(state_, WriteJobState::Completed);
     }
 
-    bool finish_cancelled() noexcept {
+    bool finish_cancelled() {
         const std::lock_guard<std::mutex> lock(mutex_);
         return transition(state_, WriteJobState::Cancelled);
     }
 
-    bool finish_failed(int error_number) noexcept {
+    bool finish_failed(int error_number) {
         const std::lock_guard<std::mutex> lock(mutex_);
         if (error_number == 0 ||
             !transition(state_, WriteJobState::Failed)) {
@@ -73,7 +73,7 @@ public:
         return true;
     }
 
-    bool finish_device_lost(int error_number) noexcept {
+    bool finish_device_lost(int error_number) {
         const std::lock_guard<std::mutex> lock(mutex_);
         if (error_number == 0 ||
             !transition(state_, WriteJobState::DeviceLost)) {
@@ -83,7 +83,7 @@ public:
         return true;
     }
 
-    WriteJobSnapshot snapshot() const noexcept {
+    WriteJobSnapshot snapshot() const {
         const std::lock_guard<std::mutex> lock(mutex_);
         return {state_, progress_.completed_bytes(),
                 progress_.total_bytes(), error_number_};
