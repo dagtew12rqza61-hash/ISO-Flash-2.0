@@ -95,12 +95,14 @@ inline bool resolve_kernel_device_node_at(dev_t expected_device,
 
     std::string line;
     std::string device_name;
+    bool saw_device_name = false;
     while (std::getline(uevent, line)) {
         if (line.rfind("DEVNAME=", 0) == 0) {
-            if (!device_name.empty()) {
+            if (saw_device_name) {
                 error = "Duplicate DEVNAME entries in kernel metadata";
                 return false;
             }
+            saw_device_name = true;
             device_name = line.substr(8);
         }
     }
