@@ -80,6 +80,8 @@ add_test(
     -DTASK_HEADER=${CMAKE_SOURCE_DIR}/engine/src/image_validation_task.hpp
     -DCALLER_WATCH_HEADER=${CMAKE_SOURCE_DIR}/engine/src/dbus_caller_watch.hpp
     -DPOLKIT_HEADER=${CMAKE_SOURCE_DIR}/engine/src/polkit_authorization.hpp
+    -DREGISTRY_HEADER=${CMAKE_SOURCE_DIR}/engine/src/write_job_registry.hpp
+    -DWRITE_OPERATION_HEADER=${CMAKE_SOURCE_DIR}/engine/src/write_operation.hpp
     -P ${CMAKE_CURRENT_SOURCE_DIR}/dbus_read_only_contract.cmake
 )
 
