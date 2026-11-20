@@ -83,24 +83,17 @@ public:
     }
 
     void shutdown() noexcept {
-        std::vector<std::unique_ptr<WriteWorker>> retired;
+        std::unordered_map<std::uint64_t, std::unique_ptr<WriteWorker>> retired;
         {
             const std::lock_guard<std::mutex> lock(mutex_);
-            if (shutting_down_ && jobs_.empty()) {
-                return;
-            }
             shutting_down_ = true;
-            retired.reserve(jobs_.size());
-            for (auto& entry : jobs_) {
-                retired.push_back(std::move(entry.second));
-            }
-            jobs_.clear();
+            retired.swap(jobs_);
         }
-        for (auto& worker : retired) {
-            worker->cancel();
+        for (auto& entry : retired) {
+            entry.second->cancel();
         }
-        for (auto& worker : retired) {
-            worker->join();
+        for (auto& entry : retired) {
+            entry.second->join();
         }
     }
 
