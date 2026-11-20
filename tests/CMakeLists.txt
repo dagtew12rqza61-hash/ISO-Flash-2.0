@@ -64,3 +64,9 @@ target_include_directories(write_job_control_test PRIVATE ${CMAKE_SOURCE_DIR}/en
 target_compile_options(write_job_control_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 target_link_libraries(write_job_control_test PRIVATE Threads::Threads)
 add_test(NAME write_job_control_serializes_state_progress_and_cancellation COMMAND write_job_control_test)
+
+add_executable(write_worker_test write_worker.cpp)
+target_include_directories(write_worker_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(write_worker_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+target_link_libraries(write_worker_test PRIVATE Threads::Threads)
+add_test(NAME write_worker_handles_async_progress_cancel_and_failures COMMAND write_worker_test)
