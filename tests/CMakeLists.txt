@@ -18,6 +18,7 @@ set(ISO_FLASH_TESTS
   image_source
   image_validation
   image_validation_limiter
+  image_validation_task
   mountinfo_parser
   opened_image_job
   opened_target_job
@@ -35,7 +36,7 @@ foreach(test_name IN LISTS ISO_FLASH_TESTS)
   target_include_directories(test_${test_name} PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
   target_link_libraries(test_${test_name} PRIVATE Threads::Threads)
   target_compile_options(test_${test_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
-  if(test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation" OR test_name STREQUAL "image_fd_validation")
+  if(test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation" OR test_name STREQUAL "image_fd_validation" OR test_name STREQUAL "image_validation_task")
     target_link_libraries(test_${test_name} PRIVATE PkgConfig::GLIB)
   endif()
   add_test(NAME ${test_name} COMMAND test_${test_name})
