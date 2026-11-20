@@ -100,3 +100,8 @@ add_executable(opened_image_job_test opened_image_job.cpp)
 target_include_directories(opened_image_job_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(opened_image_job_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME opened_image_binds_descriptor_and_admission_snapshot_to_job COMMAND opened_image_job_test)
+
+add_executable(opened_target_job_test opened_target_job.cpp)
+target_include_directories(opened_target_job_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(opened_target_job_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME opened_target_binds_device_descriptor_and_snapshot_to_job COMMAND opened_target_job_test)

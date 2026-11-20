@@ -51,6 +51,7 @@ cmake --build build --parallel 2
 - [x] Standalone SHA-256 hashing from the open ISO descriptor with before/after metadata checks and fault-injection tests
 - [x] Reusable worker validation object binds SHA-256 to an admission-time image snapshot and retains the digest for the following operation callback (in-process test only)
 - [x] Move-only ISO admission object transfers the read-only descriptor and original snapshot together into a write-job owner
+- [x] Move-only read-only target admission object binds the opened block-device descriptor to its major/minor identity and capacity/read-only snapshot; write jobs can adopt both image and target descriptors together (synthetic descriptor test only)
 - [ ] Hash integration into the privileged write protocol and read-back verification
 - [x] Loop-device rejection smoke test (no writes)
 - [ ] Destructive-path tests using disposable loop devices
