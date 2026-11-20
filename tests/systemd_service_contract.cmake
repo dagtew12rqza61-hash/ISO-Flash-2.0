@@ -7,7 +7,7 @@ file(READ "${SERVICE_FILE}" SERVICE_CONTENT)
 foreach(REQUIRED_DIRECTIVE
     "NoNewPrivileges=true"
     "ProtectSystem=strict"
-    "ProtectProc=invisible"
+    "ProtectProc=default"
     "PrivateDevices=false")
   string(FIND "${SERVICE_CONTENT}" "${REQUIRED_DIRECTIVE}" POSITION)
   if(POSITION EQUAL -1)
