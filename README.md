@@ -24,6 +24,8 @@ cmake --build build --parallel 2
 - [x] Qt 6 desktop shell
 - [x] Initial Linux block-device guard prototype
 - [x] Synthetic sysfs dependency traversal regression tests
+- [x] Strict sysfs capacity metadata parsing
+- [x] Fail-closed handling for filesystem metadata exceptions
 - [x] Separate writer executable boundary
 - [x] Disable physical writes in development builds
 - [x] Initial read-only system D-Bus inspection service
