@@ -4,6 +4,7 @@
 #include "image_fd_validation.hpp"
 #include "image_validation_limiter.hpp"
 #include "image_validation_task.hpp"
+#include "polkit_authorization.hpp"
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
@@ -30,6 +31,13 @@ constexpr const char* kIntrospectionXml = R"xml(
       <arg name="capacity_bytes" type="t" direction="out"/>
       <arg name="reason" type="s" direction="out"/>
     </method>
+    <method name="CheckWriteAuthorization">
+      <arg name="authorized" type="b" direction="out"/>
+      <arg name="uid" type="u" direction="out"/>
+      <arg name="pid" type="u" direction="out"/>
+      <arg name="process_start_ticks" type="t" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
     <method name="ValidateImage">
       <arg name="image_fd" type="h" direction="in"/>
       <arg name="accepted" type="b" direction="out"/>
@@ -47,6 +55,60 @@ void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
         invocation,
         g_variant_new("(bts)", accepted, static_cast<guint64>(capacity),
                       reason.c_str()));
+}
+
+struct AuthorizationTaskData {
+    GDBusConnection* connection = nullptr;
+    GCancellable* cancellable = nullptr;
+    guint disconnect_subscription = 0;
+    std::string sender;
+    iso_flash::PolkitAuthorizationResult result;
+
+    ~AuthorizationTaskData() {
+        if (connection != nullptr && disconnect_subscription != 0) {
+            g_dbus_connection_signal_unsubscribe(connection, disconnect_subscription);
+        }
+        if (connection != nullptr) g_object_unref(connection);
+        if (cancellable != nullptr) g_object_unref(cancellable);
+    }
+};
+
+void authorization_worker(GTask* task, gpointer, gpointer task_data,
+                          GCancellable* cancellable) {
+    auto* data = static_cast<AuthorizationTaskData*>(task_data);
+    data->result = iso_flash::authorize_dbus_sender(
+        data->connection, data->sender.c_str(), cancellable);
+    if (cancellable != nullptr && g_cancellable_is_cancelled(cancellable)) {
+        g_task_return_new_error(task, G_IO_ERROR, G_IO_ERROR_CANCELLED,
+                                "D-Bus caller disconnected during Polkit authorization");
+        return;
+    }
+    g_task_return_boolean(task, TRUE);
+}
+
+void authorization_complete(GObject*, GAsyncResult* async_result,
+                            gpointer user_data) {
+    auto* invocation = G_DBUS_METHOD_INVOCATION(user_data);
+    GTask* task = G_TASK(async_result);
+    auto* data = static_cast<AuthorizationTaskData*>(g_task_get_task_data(task));
+    GError* error = nullptr;
+    if (!g_task_propagate_boolean(task, &error)) {
+        const std::string reason = error != nullptr ? error->message :
+            "Polkit authorization task failed";
+        if (error != nullptr) g_error_free(error);
+        g_dbus_method_invocation_return_value(
+            invocation, g_variant_new("(b uut s)", FALSE, 0U, 0U,
+                                      static_cast<guint64>(0), reason.c_str()));
+    } else {
+        const auto& caller = data->result.caller;
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(buuts)", data->result.authorized,
+                          caller.uid, caller.pid,
+                          static_cast<guint64>(caller.process_start_ticks),
+                          data->result.reason.c_str()));
+    }
+    g_object_unref(invocation);
 }
 
 struct ImageValidationTaskData {
@@ -146,6 +208,44 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
             inspect_target_read_only(device, error, capacity, expected);
         return_inspection(invocation, accepted, capacity,
                           accepted ? std::string{} : error);
+        return;
+    }
+
+    if (g_strcmp0(method_name, "CheckWriteAuthorization") == 0) {
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        auto* task_data = new (std::nothrow) AuthorizationTaskData;
+        if (task_data == nullptr || sender == nullptr || sender[0] != ':') {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(buuts)", FALSE, 0U, 0U,
+                              static_cast<guint64>(0),
+                              "Cannot identify D-Bus caller"));
+            return;
+        }
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        task_data->cancellable = g_cancellable_new();
+        task_data->sender = sender;
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(), task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(buuts)", FALSE, 0U, 0U,
+                              static_cast<guint64>(0),
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
+        }
+        GTask* task = g_task_new(
+            nullptr, task_data->cancellable, authorization_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) { delete static_cast<AuthorizationTaskData*>(data); });
+        g_task_run_in_thread(task, authorization_worker);
+        g_object_unref(task);
         return;
     }
 
