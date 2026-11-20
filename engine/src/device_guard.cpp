@@ -170,6 +170,10 @@ bool validate_target(const std::string& device, std::string& error) {
             }
         }
     }
+    if (mounts.bad()) {
+        error = "Failed while reading mounted filesystem metadata";
+        return false;
+    }
 
     std::ifstream swaps("/proc/swaps");
     if (!swaps) {
@@ -181,22 +185,32 @@ bool validate_target(const std::string& device, std::string& error) {
         const auto end = line.find(' ');
         const std::string name = line.substr(0, end);
         struct stat sw{};
-        if (::stat(name.c_str(), &sw) == 0 && S_ISBLK(sw.st_mode)) {
+        if (::stat(name.c_str(), &sw) != 0) {
+            error = "Cannot verify an active swap entry";
+            return false;
+        }
+        if (S_ISBLK(sw.st_mode)) {
             std::error_code swap_ec;
             const fs::path swap_dev = sys_device(sw.st_rdev, swap_ec);
-            if (!swap_ec) {
-                bool topology_verified = true;
-                std::set<std::string> visited;
-                if (depends_on(swap_dev, real, topology_verified, visited)) {
-                    error = "Target or one of its backing devices is used for swap";
-                    return false;
-                }
-                if (!topology_verified) {
-                    error = "Cannot verify active swap device dependencies";
-                    return false;
-                }
+            if (swap_ec) {
+                error = "Cannot resolve an active swap device";
+                return false;
+            }
+            bool topology_verified = true;
+            std::set<std::string> visited;
+            if (depends_on(swap_dev, real, topology_verified, visited)) {
+                error = "Target or one of its backing devices is used for swap";
+                return false;
+            }
+            if (!topology_verified) {
+                error = "Cannot verify active swap device dependencies";
+                return false;
             }
         }
+    }
+    if (swaps.bad()) {
+        error = "Failed while reading active swap metadata";
+        return false;
     }
     return true;
 }
