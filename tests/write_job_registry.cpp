@@ -50,15 +50,15 @@ std::unique_ptr<iso_flash::WriteWorker> make_worker(std::uint64_t id) {
 
 int main() {
     iso_flash::WriteJobRegistry registry;
-    if (!registry.add(make_worker(41)) || registry.size() != 1) {
+    if (!registry.add(":1.10", make_worker(41)) || registry.size() != 1) {
         std::cerr << "Registry rejected a valid job\n";
         return 1;
     }
-    if (registry.add(make_worker(41)) || registry.size() != 1) {
+    if (registry.add(":1.10", make_worker(41)) || registry.size() != 1) {
         std::cerr << "Registry accepted a duplicate job ID\n";
         return 1;
     }
-    if (registry.snapshot(999).has_value() || !registry.snapshot(41).has_value()) {
+    if (registry.snapshot(":1.10", 999).has_value() || !registry.snapshot(":1.10", 41).has_value() || registry.snapshot(":1.11", 41).has_value()) {
         std::cerr << "Registry lookup returned an incorrect result\n";
         return 1;
     }
@@ -72,7 +72,7 @@ int main() {
         std::cerr << "Registry did not reap a completed job\\n";
         return 1;
     }
-    if (registry.snapshot(41).has_value()) {
+    if (registry.snapshot(":1.10", 41).has_value()) {
         std::cerr << "Reaped job remained visible\\n";
         return 1;
     }
@@ -96,19 +96,19 @@ int main() {
             return iso_flash::WriteOperationResult{
                 iso_flash::WriteIoStatus::Completed, 8, 0};
         });
-    if (!registry.add(std::move(cancellable))) {
+    if (!registry.add(":1.10", std::move(cancellable))) {
         std::cerr << "Registry rejected second unique job\\n";
         return 1;
     }
     operation_entered.get_future().wait();
-    if (!registry.cancel(42) || registry.cancel(999)) {
+    if (registry.cancel(":1.11", 42) || !registry.cancel(":1.10", 42) || registry.cancel(":1.10", 999)) {
         std::cerr << "Registry cancellation lookup failed\\n";
         return 1;
     }
     release_operation.set_value();
 
     registry.shutdown();
-    if (registry.size() != 0 || registry.add(make_worker(44))) {
+    if (registry.size() != 0 || registry.add(":1.10", make_worker(44))) {
         std::cerr << "Registry did not close admission during shutdown\n";
         return 1;
     }

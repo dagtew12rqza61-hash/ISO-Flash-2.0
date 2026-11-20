@@ -40,6 +40,38 @@ int main() {
         }
     }
 
+    int writable_image_pipe[2] = {-1, -1};
+    int writable_target_pipe[2] = {-1, -1};
+    if (::pipe(writable_image_pipe) != 0 ||
+        ::pipe(writable_target_pipe) != 0) {
+        std::cerr << "Cannot create writable-target ownership pipes\\n";
+        return 1;
+    }
+    ::close(writable_image_pipe[1]);
+    ::close(writable_target_pipe[1]);
+    iso_flash::ImageSnapshot image_snapshot{};
+    image_snapshot.size_bytes = 4096;
+    iso_flash::OpenedImage opened_image(
+        iso_flash::UniqueFd(writable_image_pipe[0]), image_snapshot);
+    iso_flash::DeviceSnapshot device_snapshot{};
+    device_snapshot.device_number = 1;
+    device_snapshot.capacity_bytes = 8192;
+    device_snapshot.read_only = false;
+    iso_flash::WritableTarget writable_target(
+        iso_flash::UniqueFd(writable_target_pipe[0]), device_snapshot,
+        "/sys/devices/virtual/block/loop0", "/dev/loop0");
+    {
+        iso_flash::WriteJob job(8, std::move(opened_image),
+                                std::move(writable_target));
+        if (!job.has_valid_resources() || !job.has_image_snapshot() ||
+            !job.has_target_snapshot() || job.target_fd() < 0 ||
+            job.target_snapshot().capacity_bytes != 8192 ||
+            job.writable_target().node_path != "/dev/loop0") {
+            std::cerr << "Write job did not retain its writable target identity\\n";
+            return 1;
+        }
+    }
+
     errno = 0;
     const bool image_closed = ::fcntl(image_fd, F_GETFD) == -1 && errno == EBADF;
     errno = 0;
