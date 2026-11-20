@@ -41,10 +41,8 @@ The CI test exception and injected EIO path are not part of the production packa
 
 ## Remaining gates before enabling production writes
 
-- Complete and pass the real-Polkit plus loop-device end-to-end job after the latest fixes.
 - Perform a manual GUI smoke test in a real desktop session, including service-unavailable, Polkit denial, progress, cancellation, and terminal-error display.
-- Review the full destructive path and production Polkit/systemd policy before enabling writes in the packaged service.
-- Review the complete destructive path and security policy before defining a production build with ISO_FLASH_ENABLE_WRITES.
+- Review the full destructive path and production Polkit/systemd policy before defining a production build with ISO_FLASH_ENABLE_WRITES.
 - Run final CI on the exact release commit. Do not create a release tag while any required job is failing.
 
 ## Explicit limitations
