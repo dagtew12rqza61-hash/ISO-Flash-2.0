@@ -8,7 +8,7 @@ The preferred boundary is a small system D-Bus service, not a setuid binary and 
 
 ## D-Bus interface contract
 
-The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml). It defines read-only target inspection, a write request carrying an image Unix-FD, job cancellation, and progress/completion signals. The running implementation currently exports only the read-only `InspectTarget` method documented in [DBUS_READ_ONLY_SERVICE.md](DBUS_READ_ONLY_SERVICE.md). The write, cancellation, and progress entries in the XML remain future protocol specifications. `StartWrite` must not be exposed until the service-side Polkit check, descriptor-bound safety checks, and write-job ownership are implemented.
+The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml). It defines read-only target inspection, a write request carrying an image Unix-FD, job cancellation, and progress/completion signals. The running implementation exports read-only `InspectTarget` and `ValidateImage` methods plus `CheckWriteAuthorization`. The authorization method is non-destructive: it obtains the caller's unique D-Bus name, asks the bus daemon for its UID and PID, binds those credentials to the live `/proc` UID and process start-time snapshot, and calls Polkit with a `system-bus-name` subject for `org.iso_flash.write`. It runs asynchronously, permits interactive administrator authentication, is not cached, and cancels its request when the caller disconnects. It does not open a target or start a write job. The write, cancellation, and progress entries in the XML remain future protocol specifications. `StartWrite` must not be exposed until the service-side Polkit check, descriptor-bound safety checks, and write-job ownership are implemented.
 
 ## Proposed request protocol
 
@@ -141,7 +141,7 @@ the exact first-write boundary. Physical writing remains disabled.
 
 ## Current implementation status
 
-The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit write policy, descriptor-passing write request, writable device open, D-Bus job integration, and physical write path are not implemented. The asynchronous worker and in-memory job registry primitives exist, but are not connected to the service. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
+The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit policy is now enforced by the non-destructive `CheckWriteAuthorization` D-Bus method and tested against a synthetic PolicyKit authority in CI. The descriptor-passing write request, writable device open, D-Bus job integration, and physical write path are not implemented. The asynchronous worker and in-memory job registry primitives exist, but are not connected to the service. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
 
 ## Write-job state model (implemented, not connected to a writer)
 
@@ -179,3 +179,26 @@ The header-only `WriteJobRegistry` in `engine/src/write_job_registry.hpp` owns w
 The move-only `OpenedTarget` in `engine/src/target_source.hpp` owns a read-only block-device descriptor together with the captured major/minor identity, capacity, and read-only state. Its admission helper requires an expected nonzero device identity, runs the full `validate_target_device` DeviceGuard before opening, opens read-only, compares the descriptor's `st_rdev` to the expected identity, reruns DeviceGuard against that descriptor identity, rechecks the path and descriptor snapshot, and performs a final DeviceGuard pass before transferring ownership. `WriteJob` can adopt both an `OpenedImage` and an `OpenedTarget`, retaining both admission snapshots with the exact descriptors.
 
 The regression test verifies move-only ownership transfer using pipe descriptors and synthetic metadata; it does not open or write a physical or loop block device. A separate CI source-contract test asserts that the three DeviceGuard admission calls remain present. This helper is not yet called by the D-Bus service and does not open a writable descriptor. A future privileged service must still obtain per-request Polkit authorization, open the target itself with the final writable flags, validate that exact writable descriptor, and keep it bound to the job. Physical writing remains disabled.
+
+
+## D-Bus caller identity and Polkit enforcement (implemented, no write endpoint)
+
+`engine/src/polkit_authorization.hpp` obtains the caller PID and UID from the
+system bus using the invocation's unique sender name. It independently checks
+the real UID in `/proc/PID/status`, captures process start ticks from
+`/proc/PID/stat`, and repeats the bus credential and process-start checks
+after the Polkit round trip. Polkit receives a `system-bus-name` subject
+containing only the unique D-Bus sender, the fixed action
+`org.iso_flash.write`, and `ALLOW_USER_INTERACTION`. Authorization is
+per-call and never cached. The service runs the check in a worker task and
+watches `NameOwnerChanged`; disconnect cancels the outstanding call. Any
+missing credential, UID mismatch, process replacement, Polkit denial,
+challenge not satisfied, service error, or cancellation is a fail-closed
+non-authorized result.
+
+The service exports `CheckWriteAuthorization` solely to exercise this boundary.
+It returns the observed UID, PID, process start ticks, authorization decision,
+and diagnostic reason. It does not accept a device, open a block device, create
+a job, or write data. CI uses a synthetic PolicyKit authority on an isolated
+D-Bus daemon to test allow, deny, authority failure, subject type, action ID,
+interactive flag, and caller identity. Physical writing remains disabled.
