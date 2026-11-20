@@ -137,7 +137,7 @@ inline PolkitAuthorizationResult authorize_dbus_sender(
         connection, "org.freedesktop.PolicyKit1",
         "/org/freedesktop/PolicyKit1/Authority",
         "org.freedesktop.PolicyKit1.Authority", "CheckAuthorization",
-        parameters, G_VARIANT_TYPE("(bba{ss})"),
+        parameters, G_VARIANT_TYPE("((bba{ss}))"),
         G_DBUS_CALL_FLAGS_NONE, 120000, cancellable, &error);
     if (reply == nullptr) {
         result.reason = error != nullptr ? error->message :
@@ -146,13 +146,21 @@ inline PolkitAuthorizationResult authorize_dbus_sender(
         return result;
     }
 
+    GVariant* authorization_result = nullptr;
+    g_variant_get(reply, "(@(bba{ss}))", &authorization_result);
+    g_variant_unref(reply);
+    if (authorization_result == nullptr) {
+        result.reason = "Polkit returned an empty authorization result";
+        return result;
+    }
+
     gboolean authorized = FALSE;
     gboolean challenge = FALSE;
     GVariant* returned_details = nullptr;
-    g_variant_get(reply, "(bb@a{ss})", &authorized, &challenge,
-                  &returned_details);
+    g_variant_get(authorization_result, "(bb@a{ss})",
+                  &authorized, &challenge, &returned_details);
     g_variant_unref(returned_details);
-    g_variant_unref(reply);
+    g_variant_unref(authorization_result);
 
     DbusCallerIdentity after;
     if (!query_dbus_caller_identity(connection, sender, after,
