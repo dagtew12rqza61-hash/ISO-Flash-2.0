@@ -4,6 +4,6 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: ISO Flash Project
-Depends: libc6, libstdc++6, libglib2.0-0t64
+Depends: libc6, libstdc++6, libglib2.0-0t64, dbus, polkitd, systemd
 Description: ISO Flash USB image writer engine
  Privileged system D-Bus service for Polkit-authorized USB image writing and read-back verification.
