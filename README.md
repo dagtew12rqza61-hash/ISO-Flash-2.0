@@ -32,6 +32,8 @@ cmake --build build --parallel 2
 - [x] EINTR retry on read-only target open
 - [x] RAII file-descriptor ownership and cleanup tests
 - [x] Snapshot revalidation tests for device replacement, capacity changes, and read-only transitions
+- [x] Read-only ISO descriptor validation (regular file, non-empty, no symlink)
+- [x] ISO source identity/size/mtime/ctime snapshot and mutation-detection tests
 - [x] Fail-closed handling for filesystem metadata exceptions
 - [x] Separate writer executable boundary
 - [x] Disable physical writes in development builds
