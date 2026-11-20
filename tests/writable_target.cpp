@@ -55,9 +55,9 @@ int main() {
     fs::create_directory_symlink(device, sys_root / "8:1");
     {
         std::ofstream dev_file(device / "dev");
-        dev_file << "8:1\\n";
+        dev_file << "8:1\n";
         std::ofstream uevent(device / "uevent");
-        uevent << "MAJOR=8\\nMINOR=1\\nDEVNAME=sda\\n";
+        uevent << "MAJOR=8\nMINOR=1\nDEVNAME=sda\n";
     }
     std::string node_path;
     fs::path sysfs_identity;
@@ -67,30 +67,30 @@ int main() {
             expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error) ||
         node_path != (dev_root / "sda").string() ||
         sysfs_identity != fs::canonical(device)) {
-        std::cerr << "Synthetic sysfs identity resolution failed: " << resolve_error << '\\n';
+        std::cerr << "Synthetic sysfs identity resolution failed: " << resolve_error << '\n';
         fs::remove_all(root, ec);
         return 1;
     }
 
     {
         std::ofstream dev_file(device / "dev");
-        dev_file << "8:2\\n";
+        dev_file << "8:2\n";
     }
     if (iso_flash::resolve_kernel_device_node_at(
             expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error)) {
-        std::cerr << "Mismatched sysfs major/minor was accepted\\n";
+        std::cerr << "Mismatched sysfs major/minor was accepted\n";
         fs::remove_all(root, ec);
         return 1;
     }
     {
         std::ofstream dev_file(device / "dev");
-        dev_file << "8:1\\n";
+        dev_file << "8:1\n";
         std::ofstream uevent(device / "uevent");
-        uevent << "DEVNAME=\\nDEVNAME=sdb\\n";
+        uevent << "DEVNAME=\nDEVNAME=sdb\n";
     }
     if (iso_flash::resolve_kernel_device_node_at(
             expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error)) {
-        std::cerr << "Duplicate sysfs DEVNAME was accepted\\n";
+        std::cerr << "Duplicate sysfs DEVNAME was accepted\n";
         fs::remove_all(root, ec);
         return 1;
     }
@@ -99,16 +99,16 @@ int main() {
     fs::create_directories(second_device);
     {
         std::ofstream dev_file(second_device / "dev");
-        dev_file << "8:1\\n";
+        dev_file << "8:1\n";
         std::ofstream uevent(second_device / "uevent");
-        uevent << "DEVNAME=sda\\n";
+        uevent << "DEVNAME=sda\n";
     }
     fs::remove(sys_root / "8:1");
     fs::create_directory_symlink(second_device, sys_root / "8:1");
     if (!iso_flash::resolve_kernel_device_node_at(
             expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error) ||
         sysfs_identity != fs::canonical(second_device)) {
-        std::cerr << "Changed sysfs backing identity was not observed\\n";
+        std::cerr << "Changed sysfs backing identity was not observed\n";
         fs::remove_all(root, ec);
         return 1;
     }
@@ -116,13 +116,13 @@ int main() {
     const fs::path regular_node = dev_root / "regular";
     { std::ofstream file(regular_node); file << "not a block node"; }
     if (iso_flash::inspect_block_node_path(regular_node.string(), 0, resolve_error)) {
-        std::cerr << "Regular file was accepted as a block node\\n";
+        std::cerr << "Regular file was accepted as a block node\n";
         fs::remove_all(root, ec);
         return 1;
     }
     fs::create_symlink(regular_node, dev_root / "symlink");
     if (iso_flash::inspect_block_node_path((dev_root / "symlink").string(), 0, resolve_error)) {
-        std::cerr << "Symlink device node was accepted\\n";
+        std::cerr << "Symlink device node was accepted\n";
         fs::remove_all(root, ec);
         return 1;
     }
@@ -135,7 +135,7 @@ int main() {
     if (iso_flash::inspect_block_node_path_with(
             "/dev/missing", 0, resolve_error, failed_lstat) ||
         resolve_error.find("Cannot inspect kernel device node") == std::string::npos) {
-        std::cerr << "Injected lstat failure was not rejected\\n";
+        std::cerr << "Injected lstat failure was not rejected\n";
         fs::remove_all(root, ec);
         return 1;
     }
@@ -147,7 +147,7 @@ int main() {
     if (iso_flash::inspect_block_node_path_with(
             "/dev/substituted", static_cast<std::uint64_t>(expected),
             resolve_error, wrong_identity_lstat)) {
-        std::cerr << "Substituted block-device identity was accepted\\n";
+        std::cerr << "Substituted block-device identity was accepted\n";
         fs::remove_all(root, ec);
         return 1;
     }
@@ -159,7 +159,7 @@ int main() {
     if (!iso_flash::inspect_block_node_path_with(
             "/dev/synthetic", static_cast<std::uint64_t>(expected),
             resolve_error, matching_lstat)) {
-        std::cerr << "Matching injected block-device identity was rejected\\n";
+        std::cerr << "Matching injected block-device identity was rejected\n";
         fs::remove_all(root, ec);
         return 1;
     }
