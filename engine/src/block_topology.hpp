@@ -1,5 +1,7 @@
 #pragma once
 
+#include <charconv>
+#include <cstdint>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -12,6 +14,13 @@ inline bool path_is_inside(const fs::path& child, const fs::path& parent) {
     const auto c = child.lexically_normal().string();
     const auto p = parent.lexically_normal().string();
     return c == p || (c.size() > p.size() && c.compare(0, p.size(), p) == 0 && c[p.size()] == '/');
+}
+
+inline bool valid_sector_count(const std::string& value) {
+    std::uint64_t sectors = 0;
+    const auto result = std::from_chars(value.data(), value.data() + value.size(), sectors);
+    return !value.empty() && result.ec == std::errc{} &&
+           result.ptr == value.data() + value.size() && sectors > 0;
 }
 
 // Walk from a mounted/active device toward its backing devices through sysfs slaves.
