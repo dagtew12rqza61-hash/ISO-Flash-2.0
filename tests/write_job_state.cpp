@@ -70,7 +70,7 @@ int main() {
     state = WriteJobState::Queued;
     if (iso_flash::transition(state, WriteJobState::Completed) ||
         state != WriteJobState::Queued ||
-        iso_flash::request_cancel(state) ||
+        !iso_flash::request_cancel(state) ||
         state != WriteJobState::Cancelled) {
         std::cerr << "Invalid transition changed job state\n";
         return 1;
