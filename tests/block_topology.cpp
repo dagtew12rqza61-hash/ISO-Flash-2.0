@@ -43,6 +43,7 @@ int main() {
         return 1;
     }
 
+    fs::remove(dm / "slaves/sda1");
     fs::create_directory_symlink(root / "missing-device", dm / "slaves/broken");
     verified = true;
     visited.clear();
