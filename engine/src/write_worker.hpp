@@ -23,7 +23,7 @@ class WriteWorker {
 public:
     using ProgressCallback = std::function<bool(std::uint64_t)>;
     using CancelCallback = std::function<bool()>;
-    using Validation = std::function<int(WriteJob&)>;
+    using Validation = std::function<int(WriteJob&, const CancelCallback&)>;
     using Operation = std::function<WriteOperationResult(
         WriteJob&, const ProgressCallback&, const CancelCallback&)>;
 
@@ -94,12 +94,14 @@ private:
 
             int validation_error = 0;
             try {
-                validation_error = validation_(job_);
+                validation_error = validation_(job_, [this] { return control_.cancel_requested(); });
             } catch (...) {
                 validation_error = EIO;
             }
             if (validation_error != 0) {
-                if (is_device_lost(validation_error)) {
+                if (control_.cancel_requested()) {
+                    finalize_cancelled();
+                } else if (is_device_lost(validation_error)) {
                     control_.finish_device_lost(validation_error);
                 } else {
                     control_.finish_failed(validation_error);
