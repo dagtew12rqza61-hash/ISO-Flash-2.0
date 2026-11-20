@@ -4,7 +4,6 @@
 #include <cerrno>
 #include <cstdint>
 #include <fcntl.h>
-#include <linux/fs.h>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -29,22 +28,21 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         return false;
     }
 
-    struct stat opened{};
-    std::uint64_t capacity_before = 0;
-    int read_only_before = 1;
-    bool ok = true;
+    const auto fstat_function = [](int descriptor, struct stat* metadata) {
+        return ::fstat(descriptor, metadata);
+    };
+    const auto ioctl_function = [](int descriptor, unsigned long request, void* value) {
+        return ::ioctl(descriptor, request, value);
+    };
 
-    if (::fstat(fd, &opened) != 0 || !S_ISBLK(opened.st_mode) ||
-        opened.st_rdev != path_before.st_rdev) {
+    iso_flash::DeviceSnapshot original{};
+    bool ok = iso_flash::read_device_snapshot(
+        fd, original, error, fstat_function, ioctl_function);
+    if (ok && original.device_number != static_cast<std::uint64_t>(path_before.st_rdev)) {
         error = "Opened device identity does not match the validated path";
         ok = false;
     }
-    if (ok && (::ioctl(fd, BLKGETSIZE64, &capacity_before) != 0 ||
-               ::ioctl(fd, BLKROGET, &read_only_before) != 0)) {
-        error = "Cannot read block device capacity or read-only state";
-        ok = false;
-    }
-    if (ok && (capacity_before == 0 || read_only_before != 0)) {
+    if (ok && !iso_flash::same_writable_device(original, original)) {
         error = "Target has zero capacity or is read-only";
         ok = false;
     }
@@ -55,25 +53,23 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     }
 
     struct stat path_after{};
-    struct stat opened_after{};
-    std::uint64_t capacity_after = 0;
-    int read_only_after = 1;
+    iso_flash::DeviceSnapshot opened_after{};
     if (ok && (::stat(device.c_str(), &path_after) != 0 ||
-               ::fstat(fd, &opened_after) != 0 ||
-               ::ioctl(fd, BLKGETSIZE64, &capacity_after) != 0 ||
-               ::ioctl(fd, BLKROGET, &read_only_after) != 0)) {
-        error = "Cannot revalidate target identity after opening";
+               !S_ISBLK(path_after.st_mode))) {
+        error = "Cannot revalidate target path after opening";
+        ok = false;
+    }
+    if (ok && !iso_flash::read_device_snapshot(
+                  fd, opened_after, error, fstat_function, ioctl_function)) {
+        error = "Cannot revalidate target identity after opening: " + error;
         ok = false;
     }
     if (ok) {
-        const iso_flash::DeviceSnapshot original{
-            static_cast<std::uint64_t>(opened.st_rdev), capacity_before, read_only_before != 0};
         const iso_flash::DeviceSnapshot path_snapshot{
-            static_cast<std::uint64_t>(path_after.st_rdev), capacity_after, read_only_after != 0};
-        const iso_flash::DeviceSnapshot opened_snapshot{
-            static_cast<std::uint64_t>(opened_after.st_rdev), capacity_after, read_only_after != 0};
+            static_cast<std::uint64_t>(path_after.st_rdev),
+            opened_after.capacity_bytes, opened_after.read_only};
         if (!iso_flash::same_writable_device(original, path_snapshot) ||
-            !iso_flash::same_writable_device(original, opened_snapshot)) {
+            !iso_flash::same_writable_device(original, opened_after)) {
             error = "Target identity, capacity, or writable state changed during validation";
             ok = false;
         }
@@ -83,6 +79,6 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     if (!ok) {
         return false;
     }
-    capacity_bytes = capacity_before;
+    capacity_bytes = original.capacity_bytes;
     return true;
 }
