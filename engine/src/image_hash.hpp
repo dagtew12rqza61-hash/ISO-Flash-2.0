@@ -118,6 +118,13 @@ inline ImageHashResult hash_image_sha256(
         result.bytes_hashed += static_cast<std::uint64_t>(received);
     }
 
+    if (cancel_requested && cancel_requested()) {
+        result.status = ImageHashStatus::Cancelled;
+        result.error = "ISO hashing cancelled";
+        g_checksum_free(checksum);
+        return result;
+    }
+
     ImageSnapshot after;
     snapshot_error.clear();
     if (!read_image_snapshot(fd, after, snapshot_error,
