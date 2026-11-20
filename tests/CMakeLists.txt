@@ -35,6 +35,7 @@ set(ISO_FLASH_TESTS
   write_progress
   write_worker
   writable_target
+  swapinfo_parser
 )
 
 foreach(test_name IN LISTS ISO_FLASH_TESTS)
