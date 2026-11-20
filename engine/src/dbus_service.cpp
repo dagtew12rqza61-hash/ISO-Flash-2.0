@@ -388,6 +388,40 @@ void start_write_worker(GTask* task, gpointer, gpointer task_data,
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+
+            const char* loss_marker =
+                g_getenv("ISO_FLASH_TEST_DEVICE_LOSS_MARKER");
+            if (loss_marker != nullptr && loss_marker[0] != '\0' &&
+                ::access(loss_marker, F_OK) == 0) {
+                bool simulated_device_loss = false;
+                const auto revalidate = [&write_job, &simulated_device_loss] {
+                    if (simulated_device_loss) return ENODEV;
+                    std::string error;
+                    return iso_flash::revalidate_writable_target_before_first_write(
+                        write_job.writable_target(), error)
+                        ? 0 : target_validation_error_number(error);
+                };
+                const auto outcome = iso_flash::write_image_and_verify(
+                    write_job.image_fd(), write_job.target_fd(),
+                    write_job.image_snapshot(),
+                    write_job.target_snapshot().capacity_bytes,
+                    expected_sha256, revalidate, progress, cancelled,
+                    [](int fd, void* buffer, std::size_t count, off_t offset) {
+                        return ::pread(fd, buffer, count, offset);
+                    },
+                    [&simulated_device_loss](
+                        int fd, const void* buffer, std::size_t count,
+                        off_t offset) -> ssize_t {
+                        if (offset >= 1024 * 1024) {
+                            simulated_device_loss = true;
+                            errno = EIO;
+                            return -1;
+                        }
+                        return ::pwrite(fd, buffer, count, offset);
+                    });
+                return iso_flash::WriteOperationResult{
+                    outcome.status, outcome.bytes_transferred, outcome.error_number};
+            }
 #endif
             const auto outcome = iso_flash::write_image_and_verify(
                 write_job.image_fd(), write_job.target_fd(),
