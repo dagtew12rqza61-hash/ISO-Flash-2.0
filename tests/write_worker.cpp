@@ -162,5 +162,67 @@ int main() {
         }
     }
 
+
+    {
+        iso_flash::WriteWorker worker(
+            make_job(6), 100,
+            [](iso_flash::WriteJob&,
+               const iso_flash::WriteWorker::ProgressCallback& progress,
+               const iso_flash::WriteWorker::CancelCallback&) {
+                progress(25);
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Failed, 0, ENOSPC};
+            });
+        if (!worker.start()) {
+            std::cerr << "Partial-failure worker failed to start\\n";
+            return 1;
+        }
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Failed, 25, ENOSPC)) {
+            std::cerr << "Partial progress overwrote the underlying I/O error\\n";
+            return 1;
+        }
+    }
+
+    {
+        iso_flash::WriteWorker worker(
+            make_job(7), 100,
+            [](iso_flash::WriteJob&,
+               const iso_flash::WriteWorker::ProgressCallback&,
+               const iso_flash::WriteWorker::CancelCallback&) {
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Completed, 101, 0};
+            });
+        if (!worker.start()) {
+            std::cerr << "Overrun worker failed to start\\n";
+            return 1;
+        }
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Failed, 0, EIO)) {
+            std::cerr << "Worker accepted a byte count beyond the image size\\n";
+            return 1;
+        }
+    }
+
+    {
+        iso_flash::WriteWorker worker(
+            make_job(8), 100,
+            [](iso_flash::WriteJob&,
+               const iso_flash::WriteWorker::ProgressCallback&,
+               const iso_flash::WriteWorker::CancelCallback&) {
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Completed, 100, 0};
+            });
+        if (!worker.cancel() || !worker.start()) {
+            std::cerr << "Queued cancellation was not accepted\\n";
+            return 1;
+        }
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Cancelled, 0)) {
+            std::cerr << "Queued cancellation unexpectedly ran the operation\\n";
+            return 1;
+        }
+    }
+
     return 0;
 }
