@@ -225,6 +225,15 @@ inline VerifiedWriteResult write_image_and_verify(
         } while (sync_result != 0 && errno == EINTR);
         return sync_result == 0 ? 0 : (errno == 0 ? EIO : errno);
     };
+    const auto probe_device_loss = [&] {
+        if (!revalidate_before_first_write) return;
+        const int validation_error = revalidate_before_first_write();
+        if (validation_error == ENODEV || validation_error == ENXIO ||
+            validation_error == ENOMEDIUM) {
+            result.status = WriteIoStatus::Failed;
+            result.error_number = validation_error;
+        }
+    };
 
     if (result.status == WriteIoStatus::Failed ||
         result.status == WriteIoStatus::Cancelled) {
@@ -233,6 +242,7 @@ inline VerifiedWriteResult write_image_and_verify(
             result.status = WriteIoStatus::Failed;
             result.error_number = sync_error;
         }
+        probe_device_loss();
         return result;
     }
 
@@ -240,6 +250,7 @@ inline VerifiedWriteResult write_image_and_verify(
     if (sync_error != 0) {
         result.status = WriteIoStatus::Failed;
         result.error_number = sync_error;
+        probe_device_loss();
         return result;
     }
 
@@ -264,6 +275,7 @@ inline VerifiedWriteResult write_image_and_verify(
     if (readback.status != ImageHashStatus::Completed) {
         result.status = WriteIoStatus::Failed;
         result.error_number = readback.error_number == 0 ? EIO : readback.error_number;
+        probe_device_loss();
         return result;
     }
 

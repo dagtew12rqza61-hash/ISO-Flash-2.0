@@ -150,6 +150,33 @@ int main() {
         return 1;
     }
 
+    unsigned validation_calls = 0;
+    const auto detached_during_write = iso_flash::write_image_and_verify(
+        image_fd, target_fd, snapshot, image.size(), expected.sha256,
+        [&validation_calls] {
+            ++validation_calls;
+            return validation_calls == 1 ? 0 : ENODEV;
+        },
+        [](std::uint64_t) { return true; },
+        [] { return false; },
+        [](int, void*, std::size_t, off_t) -> ssize_t {
+            errno = EIO;
+            return -1;
+        },
+        [](int, const void*, std::size_t, off_t) -> ssize_t {
+            errno = EIO;
+            return -1;
+        },
+        [](int) { return 0; });
+    if (detached_during_write.status != iso_flash::WriteIoStatus::Failed ||
+        detached_during_write.error_number != ENODEV ||
+        validation_calls != 2) {
+        std::cerr << "Device removal during I/O was not reclassified as device loss\\n";
+        remove_temp_file(image_fd, image_path);
+        remove_temp_file(target_fd, target_path);
+        return 1;
+    }
+
     remove_temp_file(image_fd, image_path);
     remove_temp_file(target_fd, target_path);
     return 0;
