@@ -125,7 +125,7 @@ void authority_thread() {
         : nullptr;
     if (connection == nullptr) {
         std::cerr << "Cannot connect synthetic Polkit authority to test bus: "
-                  << (error != nullptr ? error->message : "unknown D-Bus error") << '\\n';
+                  << (error != nullptr ? error->message : "unknown D-Bus error") << '\n';
         std::lock_guard<std::mutex> lock(g_mutex);
         g_failed = true;
         g_ready = true;
@@ -147,7 +147,7 @@ void authority_thread() {
         : 0;
     if (registration == 0) {
         std::cerr << "Cannot register synthetic Polkit authority: "
-                  << (error != nullptr ? error->message : "unknown introspection error") << '\\n';
+                  << (error != nullptr ? error->message : "unknown introspection error") << '\n';
         std::lock_guard<std::mutex> lock(g_mutex);
         g_failed = true;
         g_ready = true;
@@ -264,7 +264,7 @@ int main() {
             nullptr, nullptr, &error);
     if (disconnect_client == nullptr) {
         std::cerr << (error != nullptr ? error->message :
-                      "Cannot connect disconnect-test client") << '\\n';
+                      "Cannot connect disconnect-test client") << '\n';
         if (error != nullptr) g_error_free(error);
         g_main_loop_quit(g_loop);
         authority.join();
@@ -292,7 +292,7 @@ int main() {
         if (!g_dbus_connection_close_sync(
                 disconnect_client, nullptr, &close_error)) {
             std::cerr << (close_error != nullptr ? close_error->message :
-                          "Could not disconnect authorization caller") << '\\n';
+                          "Could not disconnect authorization caller") << '\n';
             if (close_error != nullptr) g_error_free(close_error);
             ok = false;
         }
@@ -309,7 +309,7 @@ int main() {
             nullptr, nullptr, &error);
     if (recovery_client == nullptr) {
         std::cerr << (error != nullptr ? error->message :
-                      "Cannot connect recovery client") << '\\n';
+                      "Cannot connect recovery client") << '\n';
         if (error != nullptr) g_error_free(error);
         ok = false;
     } else {
@@ -321,7 +321,7 @@ int main() {
 
     if (g_calls.load() != 5) {
         std::cerr << "Polkit authority call count mismatch after disconnect/recovery: "
-                  << g_calls.load() << '\\n';
+                  << g_calls.load() << '\n';
         ok = false;
     }
 

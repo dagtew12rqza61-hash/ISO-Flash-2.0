@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           timeout 20m sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 -o Acquire::https::Timeout=120 update
-          timeout 20m sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 -o Acquire::https::Timeout=120 install -y --no-install-recommends build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev dpkg-dev dbus-daemon libglib2.0-bin
+          timeout 20m sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 -o Acquire::https::Timeout=120 install -y --no-install-recommends build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev dpkg-dev dbus-daemon libglib2.0-bin polkitd
       - name: Configure and build
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel "$(nproc)"
       - name: Run safety regression tests
@@ -117,6 +117,26 @@ jobs:
           build/tests/test_dbus_fd_client
           build/tests/test_dbus_caller_watch
           build/tests/test_polkit_dbus_integration
+      - name: Exercise real system Polkit authorization
+        run: |
+          set -euo pipefail
+          unset DBUS_SYSTEM_BUS_ADDRESS
+          sudo systemctl start dbus.service
+          sudo systemctl start polkit.service
+          sudo systemctl is-active --quiet polkit.service
+          sudo systemctl start iso-flash.service
+          for attempt in $(seq 1 50); do
+            if build/tests/test_polkit_real_integration; then
+              exit 0
+            fi
+            status=$?
+            if [ "$status" -ne 1 ]; then exit "$status"; fi
+            sleep 0.2
+          done
+          echo "Real system Polkit integration did not become ready" >&2
+          sudo journalctl -u polkit.service -n 100 --no-pager || true
+          sudo journalctl -u iso-flash.service -n 100 --no-pager || true
+          exit 1
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
