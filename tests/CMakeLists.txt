@@ -8,6 +8,15 @@ add_executable(test_dbus_fd_client dbus_fd_client.cpp)
 target_link_libraries(test_dbus_fd_client PRIVATE PkgConfig::GIO PkgConfig::GIO_UNIX)
 target_compile_options(test_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
+add_executable(test_polkit_dbus_integration polkit_dbus_integration.cpp)
+target_link_libraries(test_polkit_dbus_integration PRIVATE PkgConfig::GIO)
+target_compile_options(test_polkit_dbus_integration PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
+add_executable(test_polkit_authorization polkit_authorization.cpp)
+target_include_directories(test_polkit_authorization PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_link_libraries(test_polkit_authorization PRIVATE PkgConfig::GIO)
+target_compile_options(test_polkit_authorization PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
 add_executable(test_dbus_caller_watch dbus_caller_watch.cpp)
 target_include_directories(test_dbus_caller_watch PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_link_libraries(test_dbus_caller_watch PRIVATE PkgConfig::GIO)
@@ -36,6 +45,7 @@ set(ISO_FLASH_TESTS
   write_worker
   writable_target
   swapinfo_parser
+  polkit_authorization
 )
 
 foreach(test_name IN LISTS ISO_FLASH_TESTS)
@@ -63,6 +73,7 @@ add_test(
     -DLIMITER_HEADER=${CMAKE_SOURCE_DIR}/engine/src/image_validation_limiter.hpp
     -DTASK_HEADER=${CMAKE_SOURCE_DIR}/engine/src/image_validation_task.hpp
     -DCALLER_WATCH_HEADER=${CMAKE_SOURCE_DIR}/engine/src/dbus_caller_watch.hpp
+    -DPOLKIT_HEADER=${CMAKE_SOURCE_DIR}/engine/src/polkit_authorization.hpp
     -P ${CMAKE_CURRENT_SOURCE_DIR}/dbus_read_only_contract.cmake
 )
 
