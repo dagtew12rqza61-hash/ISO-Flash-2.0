@@ -61,8 +61,35 @@ int main() {
         return -1;
     };
 
+    int fstat_interruptions = 0;
+    const auto interrupted_fstat = [&](int fd, struct stat* metadata) {
+        if (fstat_interruptions++ == 0) {
+            errno = EINTR;
+            return -1;
+        }
+        return fake_fstat(fd, metadata);
+    };
+    int capacity_interruptions = 0;
+    int readonly_interruptions = 0;
+    const auto interrupted_ioctl = [&](int fd, unsigned long request, void* value) {
+        int& interruptions = request == BLKGETSIZE64
+            ? capacity_interruptions : readonly_interruptions;
+        if (interruptions++ == 0) {
+            errno = EINTR;
+            return -1;
+        }
+        return fake_ioctl(fd, request, value);
+    };
+
     iso_flash::DeviceSnapshot captured{};
     std::string error;
+    if (!iso_flash::read_device_snapshot(
+            7, captured, error, interrupted_fstat, interrupted_ioctl) ||
+        fstat_interruptions != 2 || capacity_interruptions != 2 ||
+        readonly_interruptions != 2) {
+        std::cerr << "Interrupted metadata queries were not retried: " << error << '\n';
+        return 1;
+    }
     if (!iso_flash::read_device_snapshot(7, captured, error, fake_fstat, fake_ioctl) ||
         captured.device_number != static_cast<std::uint64_t>(makedev(8, 1)) ||
         captured.capacity_bytes != injected_capacity || captured.read_only) {
