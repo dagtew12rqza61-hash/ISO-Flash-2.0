@@ -70,13 +70,11 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Cannot verify a valid non-zero target capacity";
         return false;
     }
-    if (fs::exists(real / "holders")) {
-        ec.clear();
-        const bool empty = fs::is_empty(real / "holders", ec);
-        if (ec || !empty) {
-            error = "Cannot verify holders or target backs another block device";
-            return false;
-        }
+    bool holders_empty = false;
+    if (!iso_flash::directory_is_empty_verified(real / "holders", holders_empty) ||
+        !holders_empty) {
+        error = "Cannot verify holders or target backs another block device";
+        return false;
     }
 
     struct stat root{};
