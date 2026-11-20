@@ -251,6 +251,10 @@ int target_validation_error_number(const std::string& error) {
         error.find("Cannot resolve") != std::string::npos ||
         error.find("changed") != std::string::npos ||
         error.find("disappeared") != std::string::npos ||
+        error.find("zero capacity") != std::string::npos ||
+        error.find("Writable target descriptor changed") != std::string::npos ||
+        error.find("Target identity changed") != std::string::npos ||
+        error.find("sysfs identity") != std::string::npos ||
         error.find("no verified USB transport") != std::string::npos) {
         return ENODEV;
     }
