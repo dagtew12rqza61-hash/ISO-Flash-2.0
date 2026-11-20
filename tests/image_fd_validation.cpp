@@ -36,18 +36,22 @@ int main() {
     char large_path[] = "/tmp/iso-flash-cancel-XXXXXX";
     const int large_fd = ::mkstemp(large_path);
     if (large_fd < 0) return 1;
-    ::unlink(large_path);
     constexpr off_t large_size = 2 * 1024 * 1024;
     if (::ftruncate(large_fd, large_size) != 0) {
         ::close(large_fd);
+        ::unlink(large_path);
         return 1;
     }
+    ::close(large_fd);
+    const int large_read_only_fd = ::open(large_path, O_RDONLY | O_CLOEXEC);
+    ::unlink(large_path);
+    if (large_read_only_fd < 0) return 1;
     unsigned int cancellation_checks = 0;
     const auto cancelled = iso_flash::validate_image_fd(
-        large_fd, [&cancellation_checks] {
+        large_read_only_fd, [&cancellation_checks] {
             return ++cancellation_checks >= 2;
         });
-    ::close(large_fd);
+    ::close(large_read_only_fd);
 
     if (!accepted.valid || accepted.bytes_hashed != 3 ||
         accepted.sha256 != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
