@@ -50,9 +50,6 @@ void on_progress(GDBusConnection*, const gchar*, const gchar*,
     (void)completed;
     (void)total;
     ++state->progress_count;
-    if (state->loop != nullptr && job_id == state->waiting_for) {
-        g_main_loop_wakeup(state->loop);
-    }
 }
 
 void on_finished(GDBusConnection*, const gchar*, const gchar*,
