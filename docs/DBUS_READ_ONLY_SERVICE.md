@@ -16,8 +16,12 @@ passing. It duplicates the received descriptor into service-owned RAII
 ownership, requires the descriptor access mode to be read-only, verifies that
 it refers to a nonempty regular file, and computes SHA-256 through bounded positional reads on a GLib worker thread,
 keeping the D-Bus main loop responsive. The service admits at most two concurrent
-image validations and rejects excess requests with a retryable busy response,
-preventing unbounded hashing tasks from exhausting the privileged service.
+image validations through a move-only RAII capacity lease. Excess requests are
+rejected with a retryable busy response. The lease is released automatically
+when the asynchronous task data is destroyed, including completion and task
+setup failure paths, preventing unbounded hashing tasks from exhausting the
+privileged service. The limiter has a dedicated concurrency and lease-lifecycle
+unit test.
 No caller-supplied path is opened.
 The method does not write to the image or any target device.
 
