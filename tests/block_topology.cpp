@@ -9,6 +9,16 @@
 namespace fs = std::filesystem;
 
 int main() {
+    if (!iso_flash::valid_sector_count("1") ||
+        !iso_flash::valid_sector_count("4096") ||
+        iso_flash::valid_sector_count("") ||
+        iso_flash::valid_sector_count("0") ||
+        iso_flash::valid_sector_count("12x") ||
+        iso_flash::valid_sector_count("-1") ||
+        iso_flash::valid_sector_count("18446744073709551616")) {
+        std::cerr << "Strict sysfs sector-count parsing failed\\n";
+        return 1;
+    }
     const fs::path root = fs::temp_directory_path() /
         ("iso-flash-topology-" + std::to_string(static_cast<long long>(::getpid())));
     std::error_code ec;
