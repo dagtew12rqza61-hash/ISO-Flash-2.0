@@ -70,3 +70,9 @@ target_include_directories(write_worker_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/
 target_compile_options(write_worker_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 target_link_libraries(write_worker_test PRIVATE Threads::Threads)
 add_test(NAME write_worker_handles_async_progress_cancel_and_failures COMMAND write_worker_test)
+
+add_executable(write_job_registry_test write_job_registry.cpp)
+target_include_directories(write_job_registry_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(write_job_registry_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+target_link_libraries(write_job_registry_test PRIVATE Threads::Threads)
+add_test(NAME write_job_registry_manages_job_lifecycle COMMAND write_job_registry_test)
