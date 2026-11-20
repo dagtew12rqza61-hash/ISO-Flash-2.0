@@ -18,7 +18,7 @@
 
 ## Required before publishing
 
-- [x] Final package CI passed on commit `4f661459a23499e8e3fb536505e410cba3f57d7e` (run #377): build, regression suite, both Debian packages, install/purge/reinstall, D-Bus, Polkit, loop-device write lifecycle, and artifact upload.
+- [x] Final package CI passed on commit `ebbf6c17dc50ed77251f8f48a7a0b21e4af4a4e9` (run #379): build, regression suite, both Debian packages, install/purge/reinstall, D-Bus, Polkit, loop-device write lifecycle, and artifact upload.
 - [ ] Manually launch the GUI in a real desktop session and verify device discovery, ISO selection, Polkit denial/approval, progress, cancellation, and error display.
 - [ ] Review the destructive write path, target safety checks, systemd capabilities, D-Bus policy, and Polkit action.
 - [ ] Confirm the release artifact contains both packages and record the artifact SHA-256.
@@ -26,11 +26,11 @@
 
 ## Latest verified package artifact
 
-- GitHub Actions run: https://github.com/dagtew12rqza61-hash/ISO-Flash-2.0/actions/runs/44746061638
+- GitHub Actions run: https://github.com/dagtew12rqza61-hash/ISO-Flash-2.0/actions/runs/44746338726
 - Artifact: `iso-flash-deb-amd64` (two amd64 Debian packages, version 2.0.0)
-- Artifact SHA-256: `07b6a84be8e90d034312f2013c46667e0e37ab87ae4787956f369a96d8bddc30`
-- `iso-flash-engine_2.0.0_amd64.deb` SHA-256: `5f9264740ec9c95af81593caf7c30eb01ab2e29b3aaa223d0072df5f9402875b`
-- `iso-flash_2.0.0_amd64.deb` SHA-256: `4ee76cb9724444482a992c13897184231abe082ed469a4fd503f2f50a8ee6fd1`
+- Artifact SHA-256: `ebab9771bd665864468cb07ebe2643fac4879ef32fcf49a9e084374b2f7c8988`
+- `iso-flash-engine_2.0.0_amd64.deb` SHA-256: `24ce3266f3dcd154705d270f9bd8ca02dbb6998a0f8d80160fc4cbe0765dc020`
+- `iso-flash_2.0.0_amd64.deb` SHA-256: `bdfba0709360975690e4bc2070e052c072596add3e161ac41fb3e4340992496e`
 
 ## Package behavior and test boundary
 
