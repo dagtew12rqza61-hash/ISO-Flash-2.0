@@ -1,5 +1,6 @@
 #include "device_guard.hpp"
 #include "device_snapshot.hpp"
+#include "device_io.hpp"
 
 #include <cerrno>
 #include <cstdint>
@@ -22,11 +23,14 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         return false;
     }
 
-    const int fd = ::open(device.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
-    if (fd < 0) {
-        error = "Cannot open target read-only";
+    int raw_fd = -1;
+    const auto open_function = [](const char* path, int flags) {
+        return ::open(path, flags);
+    };
+    if (!iso_flash::open_target_read_only(device, raw_fd, error, open_function)) {
         return false;
     }
+    const iso_flash::UniqueFd fd(raw_fd);
 
     const auto fstat_function = [](int descriptor, struct stat* metadata) {
         return ::fstat(descriptor, metadata);
@@ -37,7 +41,7 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
 
     iso_flash::DeviceSnapshot original{};
     bool ok = iso_flash::read_device_snapshot(
-        fd, original, error, fstat_function, ioctl_function);
+        fd.get(), original, error, fstat_function, ioctl_function);
     if (ok && original.device_number != static_cast<std::uint64_t>(path_before.st_rdev)) {
         error = "Opened device identity does not match the validated path";
         ok = false;
@@ -60,7 +64,7 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         ok = false;
     }
     if (ok && !iso_flash::read_device_snapshot(
-                  fd, opened_after, error, fstat_function, ioctl_function)) {
+                  fd.get(), opened_after, error, fstat_function, ioctl_function)) {
         error = "Cannot revalidate target identity after opening: " + error;
         ok = false;
     }
@@ -75,7 +79,6 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         }
     }
 
-    ::close(fd);
     if (!ok) {
         return false;
     }
