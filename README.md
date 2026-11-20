@@ -24,7 +24,8 @@ cmake --build build --parallel 2
 - [x] Separate writer executable boundary
 - [x] Disable physical writes in development builds
 - [ ] Hardened device identity and topology validation
-- [x] Documented D-Bus + Polkit privileged-write security architecture\n- [ ] Implement narrow polkit-authorized system service
+- [x] Documented D-Bus + Polkit privileged-write security architecture
+- [ ] Implement narrow polkit-authorized system service
 - [ ] Asynchronous writing with safe cancellation and progress
 - [ ] SHA-256 and read-back verification
 - [ ] Automated tests using disposable loop devices
