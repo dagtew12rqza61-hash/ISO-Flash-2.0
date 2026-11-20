@@ -35,15 +35,15 @@ The workflow:
 - Installs, purges, verifies removal, and reinstalls both packages.
 - Starts the real system D-Bus and Polkit services and verifies that an unprivileged caller is denied or challenged.
 - Installs a temporary CI-only Polkit rule for the runner account, then exercises the enabled service against a disposable file-backed loop device.
-- Tests D-Bus Unix-FD transfer, owner-only cancellation, caller-disconnect cancellation, progress/completion signals, fsync, and SHA-256 read-back.
+- Tests D-Bus Unix-FD transfer, owner-only cancellation, caller-disconnect cancellation, progress/completion signals, fsync, and SHA-256 read-back. A test-only fault injection forces EIO after the first 1 MiB written to a disposable loop device; the service must classify the loss as ENODEV, report the exact partial byte count, and preserve a matching source prefix.
 
-The CI test exception is not part of the production package. CI must never write to host physical disks.
+The CI test exception and injected EIO path are not part of the production package. CI must never write to host physical disks.
 
 ## Remaining gates before enabling production writes
 
 - Complete and pass the real-Polkit plus loop-device end-to-end job after the latest fixes.
-- Add deterministic device-removal fault injection against a disposable loop device and verify terminal state, byte accounting, and partial-write reporting.
-- Complete GUI signal/error testing and package install/remove/reinstall validation.
+- Perform a manual GUI smoke test in a real desktop session, including service-unavailable, Polkit denial, progress, cancellation, and terminal-error display.
+- Review the full destructive path and production Polkit/systemd policy before enabling writes in the packaged service.
 - Review the complete destructive path and security policy before defining a production build with ISO_FLASH_ENABLE_WRITES.
 - Run final CI on the exact release commit. Do not create a release tag while any required job is failing.
 

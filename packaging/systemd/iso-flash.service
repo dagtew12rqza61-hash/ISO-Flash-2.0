@@ -1,5 +1,5 @@
 [Unit]
-Description=ISO Flash read-only device inspection service
+Description=ISO Flash privileged D-Bus device service (writes disabled by default)
 Documentation=https://github.com/dagtew12rqza61-hash/ISO-Flash-2.0
 After=dbus.service
 Requires=dbus.service

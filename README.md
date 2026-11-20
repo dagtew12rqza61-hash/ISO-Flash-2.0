@@ -21,7 +21,7 @@ The destructive path is enabled only in a separate CI test executable. That exec
 - D-Bus Progress and Finished signals are sent to the owning client.
 - The write operation handles short writes and EINTR, tracks partial progress, calls fsync, and verifies the written byte range using SHA-256 read-back.
 - Device errors are terminal; a failed or cancelled write can leave a partially written, unusable target.
-- CI builds and installs both Debian packages, checks package removal/reinstallation, starts the real system Polkit service, and exercises the enabled write path only against disposable file-backed loop devices.
+- CI builds and installs both Debian packages, verifies purge/reinstallation and service restart, starts the real system Polkit service, and exercises the enabled write path only against disposable file-backed loop devices. A test-only EIO injection after the first 1 MiB verifies device-loss classification, partial-byte accounting, and the written ISO prefix.
 
 ## Build
 
@@ -35,7 +35,7 @@ Ubuntu 24.04 / 26.04 amd64:
 
 ## Safety and release status
 
-- Production physical writing remains disabled until the complete loop-device suite, unplug/error-path tests, GUI integration, and package checks pass.
+- Production physical writing remains disabled pending a manual desktop-session GUI smoke test, security review of the destructive path, and explicit release approval. The complete CI loop-device, Polkit, package, and injected device-loss suite passes.
 - CI-only loop-device permission is isolated to iso-flash-service-loop-test; it is not compiled into the packaged service.
 - No CI test writes to a physical drive.
 - A cancelled or interrupted operation cannot roll back bytes already written.
