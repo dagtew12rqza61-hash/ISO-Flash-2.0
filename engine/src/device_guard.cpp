@@ -2,6 +2,9 @@
 #include "mountinfo.hpp"
 #include "block_topology.hpp"
 
+#include <charconv>
+#include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -19,6 +22,13 @@ static std::string first_line(const fs::path& p) {
     std::getline(f, s);
     return s;
 }
+static bool valid_sector_count(const std::string& value) {
+    std::uint64_t sectors = 0;
+    const auto result = std::from_chars(value.data(), value.data() + value.size(), sectors);
+    return !value.empty() && result.ec == std::errc{} &&
+           result.ptr == value.data() + value.size() && sectors > 0;
+}
+
 static fs::path sys_device(dev_t number, std::error_code& ec) {
     return fs::canonical(fs::path("/sys/dev/block") /
         (std::to_string(major(number)) + ":" + std::to_string(minor(number))), ec);
@@ -38,6 +48,7 @@ static bool has_usb_transport_ancestor(const fs::path& device) {
 }
 
 bool validate_target(const std::string& device, std::string& error) {
+    try {
     struct stat st{};
     if (::stat(device.c_str(), &st) != 0 || !S_ISBLK(st.st_mode)) {
         error = "Target is not a block device";
@@ -63,13 +74,8 @@ bool validate_target(const std::string& device, std::string& error) {
         return false;
     }
     const std::string sectors = first_line(real / "size");
-    try {
-        if (sectors.empty() || std::stoull(sectors) == 0) {
-            error = "Target reports zero capacity";
-            return false;
-        }
-    } catch (...) {
-        error = "Cannot verify target capacity";
+    if (!valid_sector_count(sectors)) {
+        error = "Cannot verify a valid non-zero target capacity";
         return false;
     }
     if (fs::exists(real / "holders")) {
@@ -171,4 +177,11 @@ bool validate_target(const std::string& device, std::string& error) {
         return false;
     }
     return true;
+    } catch (const std::exception& exception) {
+        error = std::string("Safety inspection failed closed: ") + exception.what();
+        return false;
+    } catch (...) {
+        error = "Safety inspection failed closed due to an unexpected metadata error";
+        return false;
+    }
 }
