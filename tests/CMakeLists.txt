@@ -36,3 +36,8 @@ add_executable(device_error_test device_error.cpp)
 target_include_directories(device_error_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(device_error_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME device_error_reports_disconnect_and_media_state COMMAND device_error_test)
+
+add_executable(write_job_state_test write_job_state.cpp)
+target_include_directories(write_job_state_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(write_job_state_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME write_job_state_enforces_safe_transitions COMMAND write_job_state_test)
