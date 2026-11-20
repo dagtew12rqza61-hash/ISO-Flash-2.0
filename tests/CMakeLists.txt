@@ -95,3 +95,8 @@ target_include_directories(image_validation_test PRIVATE ${CMAKE_SOURCE_DIR}/eng
 target_link_libraries(image_validation_test PRIVATE PkgConfig::GIO Threads::Threads)
 target_compile_options(image_validation_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME image_validation_hashes_admission_snapshot_before_worker_operation COMMAND image_validation_test)
+
+add_executable(opened_image_job_test opened_image_job.cpp)
+target_include_directories(opened_image_job_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(opened_image_job_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME opened_image_binds_descriptor_and_admission_snapshot_to_job COMMAND opened_image_job_test)

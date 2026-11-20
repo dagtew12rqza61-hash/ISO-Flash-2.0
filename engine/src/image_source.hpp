@@ -1,11 +1,14 @@
 #pragma once
 
+#include "device_io.hpp"
+
 #include <cerrno>
 #include <cstdint>
 #include <fcntl.h>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 
 namespace iso_flash {
 
@@ -30,6 +33,24 @@ inline bool same_image_snapshot(const ImageSnapshot& original,
            original.changed_seconds == current.changed_seconds &&
            original.changed_nanoseconds == current.changed_nanoseconds;
 }
+
+struct OpenedImage {
+    UniqueFd descriptor;
+    ImageSnapshot snapshot;
+
+    OpenedImage() = default;
+    OpenedImage(UniqueFd opened_descriptor, ImageSnapshot opened_snapshot) noexcept
+        : descriptor(std::move(opened_descriptor)), snapshot(opened_snapshot) {}
+
+    OpenedImage(const OpenedImage&) = delete;
+    OpenedImage& operator=(const OpenedImage&) = delete;
+    OpenedImage(OpenedImage&&) noexcept = default;
+    OpenedImage& operator=(OpenedImage&&) noexcept = default;
+
+    bool valid() const noexcept {
+        return descriptor.get() >= 0 && snapshot.size_bytes > 0;
+    }
+};
 
 template <typename FstatFunction>
 bool read_image_snapshot(int fd, ImageSnapshot& snapshot, std::string& error,
@@ -94,6 +115,24 @@ bool open_image_read_only(const std::string& path, int& fd,
     }
 
     fd = opened;
+    return true;
+}
+
+inline bool open_image_source(const std::string& path, OpenedImage& image,
+                              std::string& error) {
+    int fd = -1;
+    ImageSnapshot snapshot;
+    if (!open_image_read_only(
+            path, fd, snapshot, error,
+            [](const char* filename, int flags) {
+                return ::open(filename, flags);
+            },
+            [](int descriptor, struct stat* metadata) {
+                return ::fstat(descriptor, metadata);
+            })) {
+        return false;
+    }
+    image = OpenedImage(UniqueFd(fd), snapshot);
     return true;
 }
 
