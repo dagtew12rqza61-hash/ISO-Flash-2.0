@@ -18,7 +18,8 @@ struct ImageFdValidationResult {
     std::string reason;
 };
 
-inline ImageFdValidationResult validate_image_fd(int fd) {
+inline ImageFdValidationResult validate_image_fd(
+    int fd, const std::function<bool()>& cancel_requested = {}) {
     ImageFdValidationResult result;
     if (fd < 0) {
         result.error_number = EBADF;
@@ -51,7 +52,7 @@ inline ImageFdValidationResult validate_image_fd(int fd) {
     }
 
     const ImageHashResult hash =
-        hash_image_sha256(fd, result.snapshot, [] { return false; });
+        hash_image_sha256(fd, result.snapshot, cancel_requested);
     result.bytes_hashed = hash.bytes_hashed;
     if (hash.status != ImageHashStatus::Completed) {
         result.error_number = hash.error_number == 0 ? EIO : hash.error_number;
