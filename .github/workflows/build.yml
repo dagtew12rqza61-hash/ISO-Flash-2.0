@@ -108,6 +108,7 @@ jobs:
           printf '%s\\n' "$reply"
           printf '%s' "$reply" | grep -q 'false'
           build/tests/test_dbus_fd_client
+          build/tests/test_dbus_caller_watch
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
