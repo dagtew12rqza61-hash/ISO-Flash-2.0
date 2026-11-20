@@ -1,4 +1,5 @@
 #include "device_guard.hpp"
+#include "device_snapshot.hpp"
 
 #include <cerrno>
 #include <cstdint>
@@ -64,11 +65,18 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         error = "Cannot revalidate target identity after opening";
         ok = false;
     }
-    if (ok && (path_after.st_rdev != opened.st_rdev ||
-               opened_after.st_rdev != opened.st_rdev ||
-               capacity_after != capacity_before || read_only_after != 0)) {
-        error = "Target identity or capacity changed during validation";
-        ok = false;
+    if (ok) {
+        const iso_flash::DeviceSnapshot original{
+            static_cast<std::uint64_t>(opened.st_rdev), capacity_before, read_only_before != 0};
+        const iso_flash::DeviceSnapshot path_snapshot{
+            static_cast<std::uint64_t>(path_after.st_rdev), capacity_after, read_only_after != 0};
+        const iso_flash::DeviceSnapshot opened_snapshot{
+            static_cast<std::uint64_t>(opened_after.st_rdev), capacity_after, read_only_after != 0};
+        if (!iso_flash::same_writable_device(original, path_snapshot) ||
+            !iso_flash::same_writable_device(original, opened_snapshot)) {
+            error = "Target identity, capacity, or writable state changed during validation";
+            ok = false;
+        }
     }
 
     ::close(fd);
