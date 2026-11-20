@@ -170,11 +170,6 @@ private:
                 return;
             }
 
-            if (control_.cancel_requested()) {
-                finalize_cancelled();
-                return;
-            }
-
             if (result.bytes_transferred != current.total_bytes ||
                 !control_.update_progress(result.bytes_transferred) ||
                 !control_.finish_completed()) {

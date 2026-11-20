@@ -145,6 +145,43 @@ int main() {
     }
 
     {
+        std::promise<void> entered;
+        std::promise<void> release;
+        const auto release_signal = release.get_future().share();
+        iso_flash::WriteWorker worker(
+            make_job(12), 100,
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
+            [&entered, release_signal](
+                iso_flash::WriteJob&,
+                const iso_flash::WriteWorker::ProgressCallback& progress,
+                const iso_flash::WriteWorker::CancelCallback&) {
+                entered.set_value();
+                release_signal.wait();
+                if (!progress(100)) {
+                    return iso_flash::WriteOperationResult{
+                        iso_flash::WriteIoStatus::Failed, 0, EIO};
+                }
+                return iso_flash::WriteOperationResult{
+                    iso_flash::WriteIoStatus::Completed, 100, 0};
+            });
+        if (!worker.start()) {
+            std::cerr << "Late-cancellation worker failed to start\\n";
+            return 1;
+        }
+        entered.get_future().wait();
+        if (!worker.cancel()) {
+            std::cerr << "Late-cancellation request was not accepted\\n";
+            return 1;
+        }
+        release.set_value();
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Completed, 100)) {
+            std::cerr << "A completed and verified operation was misreported as cancelled\\n";
+            return 1;
+        }
+    }
+
+    {
         iso_flash::WriteWorker worker(
             make_job(3), 100,
             [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },

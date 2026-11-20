@@ -37,7 +37,8 @@ constexpr bool can_transition(WriteJobState from, WriteJobState to) noexcept {
     case WriteJobState::Writing:
         return to == WriteJobState::Cancelling || to == WriteJobState::Completed;
     case WriteJobState::Cancelling:
-        return to == WriteJobState::Cancelled;
+        return to == WriteJobState::Cancelled ||
+               to == WriteJobState::Completed;
     case WriteJobState::Completed:
     case WriteJobState::Failed:
     case WriteJobState::DeviceLost:

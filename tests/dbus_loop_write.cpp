@@ -291,6 +291,22 @@ int main(int argc, char** argv) {
         return 4;
     }
 
+    g_dbus_connection_close_sync(other, nullptr, nullptr);
+    g_object_unref(other);
+    other = nullptr;
+
+    GDBusConnection* disconnect_owner = new_system_bus_connection();
+    if (disconnect_owner == nullptr) return 5;
+    std::uint64_t disconnected_job_id = 0;
+    if (!start_write(disconnect_owner, image_fd, device_major, device_minor,
+                     disconnected_job_id)) {
+        g_object_unref(disconnect_owner);
+        return 5;
+    }
+    g_dbus_connection_close_sync(disconnect_owner, nullptr, nullptr);
+    g_object_unref(disconnect_owner);
+    g_usleep(1500000);
+
     std::uint64_t completed_job_id = 0;
     if (!start_write(owner, image_fd, device_major, device_minor,
                      completed_job_id)) {

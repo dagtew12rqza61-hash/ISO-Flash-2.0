@@ -107,6 +107,38 @@ int main() {
     }
     release_operation.set_value();
 
+    std::promise<void> owner_job_entered;
+    std::promise<void> owner_job_release;
+    const auto owner_job_release_signal = owner_job_release.get_future().share();
+    auto owner_job = std::make_unique<iso_flash::WriteWorker>(
+        make_job(45), 8,
+        [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
+        [&owner_job_entered, owner_job_release_signal](
+            iso_flash::WriteJob&,
+            const iso_flash::WriteWorker::ProgressCallback&,
+            const iso_flash::WriteWorker::CancelCallback& cancelled) {
+            owner_job_entered.set_value();
+            owner_job_release_signal.wait();
+            return iso_flash::WriteOperationResult{
+                cancelled() ? iso_flash::WriteIoStatus::Cancelled
+                            : iso_flash::WriteIoStatus::Completed,
+                0, 0};
+        });
+    if (!registry.add(":1.10", std::move(owner_job))) {
+        std::cerr << "Owner-disconnect job was not admitted\\n";
+        return 1;
+    }
+    owner_job_entered.get_future().wait();
+    if (registry.cancel_owner(":1.10") != 1) {
+        std::cerr << "Disconnect did not cancel all jobs owned by the caller\\n";
+        return 1;
+    }
+    owner_job_release.set_value();
+    if (registry.reap_terminal() != 1) {
+        std::cerr << "Disconnected caller job was not reaped\\n";
+        return 1;
+    }
+
     registry.shutdown();
     if (registry.size() != 0 || registry.add(":1.10", make_worker(44))) {
         std::cerr << "Registry did not close admission during shutdown\n";
