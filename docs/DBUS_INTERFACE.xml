@@ -8,6 +8,13 @@
       <arg name="capacity_bytes" type="t" direction="out"/>
       <arg name="reason" type="s" direction="out"/>
     </method>
+    <method name="CheckWriteAuthorization">
+      <arg name="authorized" type="b" direction="out"/>
+      <arg name="uid" type="u" direction="out"/>
+      <arg name="pid" type="u" direction="out"/>
+      <arg name="process_start_ticks" type="t" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
     <method name="ValidateImage">
       <arg name="image_fd" type="h" direction="in"/>
       <arg name="accepted" type="b" direction="out"/>
@@ -19,20 +26,27 @@
       <arg name="image_fd" type="h" direction="in"/>
       <arg name="major" type="u" direction="in"/>
       <arg name="minor" type="u" direction="in"/>
-      <arg name="job_id" type="s" direction="out"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="job_id" type="t" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
     </method>
     <method name="CancelWrite">
-      <arg name="job_id" type="s" direction="in"/>
+      <arg name="job_id" type="t" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
     </method>
     <signal name="Progress">
-      <arg name="job_id" type="s"/>
-      <arg name="bytes_written" type="t"/>
+      <arg name="job_id" type="t"/>
+      <arg name="state" type="s"/>
+      <arg name="completed_bytes" type="t"/>
       <arg name="total_bytes" type="t"/>
     </signal>
     <signal name="Finished">
-      <arg name="job_id" type="s"/>
-      <arg name="success" type="b"/>
-      <arg name="code" type="s"/>
+      <arg name="job_id" type="t"/>
+      <arg name="state" type="s"/>
+      <arg name="completed_bytes" type="t"/>
+      <arg name="total_bytes" type="t"/>
+      <arg name="error_number" type="i"/>
       <arg name="message" type="s"/>
     </signal>
   </interface>

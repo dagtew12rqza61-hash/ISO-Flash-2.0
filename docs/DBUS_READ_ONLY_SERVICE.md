@@ -1,55 +1,45 @@
-# Read-only D-Bus service
+# D-Bus service and privileged write path
 
-The system service exports two read-only methods:
+The system-bus service exports the complete ISO Flash manager interface. The Qt GUI remains unprivileged; it never opens a writable block device and never invokes a privileged shell command.
 
-- `InspectTarget(u major, u minor) -> (b accepted, t capacity_bytes, s reason)`
-- `ValidateImage(h image_fd) -> (b accepted, t size_bytes, s sha256, s reason)`
+## Methods
 
-`InspectTarget` resolves the supplied major/minor pair as
-`/dev/block/MAJOR:MINOR` and calls the same read-only target inspection path
-used by the engine. The opened descriptor's device number must match the exact
-requested major/minor pair; a substituted or mismatched device node is rejected.
-The service never accepts an arbitrary device path from the caller.
+- InspectTarget(u major, u minor) -> (b accepted, t capacity_bytes, s reason)
+- CheckWriteAuthorization() -> (b authorized, u uid, u pid, t process_start_ticks, s reason)
+- ValidateImage(h image_fd) -> (b accepted, t size_bytes, s sha256, s reason)
+- StartWrite(h image_fd, u major, u minor) -> (b accepted, t job_id, s reason)
+- CancelWrite(t job_id) -> (b accepted, s reason)
 
-`ValidateImage` receives an already-open file descriptor through D-Bus Unix-FD
-passing. It duplicates the received descriptor into service-owned RAII
-ownership, requires the descriptor access mode to be read-only, verifies that
-it refers to a nonempty regular file, and computes SHA-256 through bounded positional reads on a GLib worker thread,
-keeping the D-Bus main loop responsive. The worker boundary catches both standard and unknown C++ exceptions and converts them into a failed D-Bus validation reply instead of allowing an exception to escape through GLib's C callback. The service admits at most two concurrent
-image validations through a move-only RAII capacity lease. Excess requests are
-rejected with a retryable busy response. The lease is released automatically
-when the asynchronous task data is destroyed, including completion and task
-setup failure paths, preventing unbounded hashing tasks from exhausting the
-privileged service. The limiter has a dedicated concurrency and lease-lifecycle
-unit test. The service also watches the caller's unique D-Bus name through a shared
-caller-watch helper. When that exact connection disappears, a GCancellable
-stops hashing at the next bounded 1 MiB read boundary. The watcher ignores
-disconnects from unrelated D-Bus clients. Its subscription and retained
-cancellable reference are released with task-data cleanup, and the received
-descriptor and capacity lease are released on the same lifecycle path. CI
-runs an isolated D-Bus integration test that closes an unrelated client first
-(to prove it does not cancel the task), then closes the watched client and
-requires cancellation to arrive.
-No caller-supplied path is opened.
-The method does not write to the image or any target device.
+## Signals
 
-The service runs as root because device-node access and complete system
-metadata inspection must be consistent across desktop sessions. Its systemd
-unit applies a restrictive filesystem and capability boundary. It has no
-write method, no shell execution, no client-supplied executable, and no
-writable device descriptor.
+- Progress(t job_id, s state, t completed_bytes, t total_bytes)
+- Finished(t job_id, s state, t completed_bytes, t total_bytes, i error_number, s message)
 
-## Current boundary
+Signals are directed to the unique D-Bus name that owns the corresponding job. A different client cannot cancel that job.
 
-- Implemented: system-bus activation, typed read-only target inspection,
-  descriptor-bound image validation, Unix-FD reception, read-only access-mode
-  enforcement, SHA-256 validation, and a hardened systemd unit.
-- Not implemented: Polkit write authorization, writable target opening,
-  service-integrated asynchronous write jobs, write-job cancellation, progress, and
-  read-back verification.
-- The broader method contract in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml)
-  remains a future protocol specification. The service does not export
-  `StartWrite` or `CancelWrite`.
+## StartWrite security flow
 
-A successful image validation is not authorization to write. Physical writes
-remain disabled.
+1. The GUI opens the ISO as a regular read-only file and passes that descriptor through D-Bus Unix-FD passing. The request includes only the selected target's major/minor numbers, not an arbitrary path.
+2. The service duplicates and owns the received descriptor, verifies read-only access, regular-file type, nonzero size, source snapshot, and SHA-256.
+3. The service derives the caller from the invocation's unique D-Bus sender. It queries UID and PID from the bus daemon, verifies the live process identity and process start time, and authorizes the system-bus-name subject through the fixed Polkit action org.iso_flash.write.
+4. Caller UID, PID, and process start time are checked again after authorization. Missing sender, disconnect, cancellation, timeout, or Polkit error fails closed.
+5. Only after successful authorization does the service resolve major/minor through sysfs, verify USB transport and full DeviceGuard constraints, open the block device exclusively with fixed flags, and bind the writable descriptor to the exact device identity and capacity.
+6. The service repeats target validation at the first-write boundary. The job owns both descriptors and is registered under the caller's unique D-Bus name.
+7. CancelWrite is owner-only. NameOwnerChanged watches the owner; disconnect requests cancellation. The worker tracks partial progress, handles short writes and EINTR, calls fsync, and reads the written range back for SHA-256 comparison.
+8. Device loss, I/O errors, cancellation, and integrity mismatch are terminal. Bytes already written cannot be rolled back; the target may be left partially imaged.
+
+## Image validation and concurrency
+
+ValidateImage uses the same received-descriptor validation path but does not open or modify any target. Hashing is asynchronous, bounded, and limited to two concurrent validations. A caller disconnect cancels its outstanding hash operation. Validation errors and exceptions are returned as failed D-Bus replies.
+
+## Privilege boundary
+
+The system service runs as root with a hardened systemd unit. The normal packaged service enables the Polkit-gated write method; the GUI remains unprivileged. The D-Bus policy permits only the service account to own the manager name and limits service-originated signals to the manager interface.
+
+The CI-only service executable adds a test exception for file-backed loop devices and deterministic device-loss injection. Those test hooks are not compiled into the packaged service. CI writes only to disposable loop devices, never physical media.
+
+## Limitations and release state
+
+- Raw imaging supports hybrid Linux ISO images. Windows installer ISO preparation requires a separate FAT32/NTFS-aware flow.
+- Loop-device integration tests validate the software path but do not certify every USB controller or flash drive.
+- The project still requires a manual desktop-session GUI smoke test and security review before publishing a GitHub Release.
