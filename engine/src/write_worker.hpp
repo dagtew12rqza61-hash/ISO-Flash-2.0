@@ -52,8 +52,12 @@ public:
             !control_.snapshot().total_bytes) {
             return false;
         }
+        try {
+            worker_ = std::thread([this] { run(); });
+        } catch (...) {
+            return false;
+        }
         started_ = true;
-        worker_ = std::thread([this] { run(); });
         return true;
     }
 
