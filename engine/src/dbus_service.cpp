@@ -1,3 +1,4 @@
+#include "dbus_caller_watch.hpp"
 #include "device_guard.hpp"
 #include "device_io.hpp"
 #include "image_fd_validation.hpp"
@@ -65,20 +66,6 @@ struct ImageValidationTaskData {
         if (cancellable != nullptr) g_object_unref(cancellable);
     }
 };
-
-void sender_owner_changed(GDBusConnection*, const gchar*, const gchar*,
-                          const gchar*, const gchar*, GVariant* parameters,
-                          gpointer user_data) {
-    auto* cancellable = G_CANCELLABLE(user_data);
-    const gchar* name = nullptr;
-    const gchar* old_owner = nullptr;
-    const gchar* new_owner = nullptr;
-    g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
-    if (name != nullptr && old_owner != nullptr && new_owner != nullptr &&
-        old_owner[0] != '\\0' && new_owner[0] == '\\0') {
-        g_cancellable_cancel(cancellable);
-    }
-}
 
 void image_validation_worker(GTask* task, gpointer, gpointer task_data,
                              GCancellable* cancellable) {
@@ -215,12 +202,10 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
         const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
         task_data->sender = sender != nullptr ? sender : "";
         if (!task_data->sender.empty()) {
-            task_data->disconnect_subscription = g_dbus_connection_signal_subscribe(
-                connection, "org.freedesktop.DBus", "org.freedesktop.DBus",
-                "NameOwnerChanged", "/org/freedesktop/DBus",
-                task_data->sender.c_str(), G_DBUS_SIGNAL_FLAGS_NONE,
-                sender_owner_changed, g_object_ref(task_data->cancellable),
-                [](gpointer data) { g_object_unref(data); });
+            task_data->disconnect_subscription =
+                iso_flash::subscribe_to_caller_disconnect(
+                    connection, task_data->sender.c_str(),
+                    task_data->cancellable);
         }
 
         GTask* task = g_task_new(
