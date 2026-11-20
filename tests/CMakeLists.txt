@@ -8,6 +8,11 @@ add_executable(test_dbus_fd_client dbus_fd_client.cpp)
 target_link_libraries(test_dbus_fd_client PRIVATE PkgConfig::GIO PkgConfig::GIO_UNIX)
 target_compile_options(test_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
+add_executable(test_dbus_caller_watch dbus_caller_watch.cpp)
+target_include_directories(test_dbus_caller_watch PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_link_libraries(test_dbus_caller_watch PRIVATE PkgConfig::GIO)
+target_compile_options(test_dbus_caller_watch PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
 set(ISO_FLASH_TESTS
   block_topology
   device_error
