@@ -5,6 +5,7 @@
 #include <QDBusUnixFileDescriptor>
 #include <QVariant>
 
+#include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
 #include <unistd.h>
