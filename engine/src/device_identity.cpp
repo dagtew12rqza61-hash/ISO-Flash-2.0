@@ -33,8 +33,8 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     iso_flash::DeviceSnapshot original{};
     bool ok = iso_flash::read_device_snapshot(
         fd.get(), original, error, fstat_function, ioctl_function);
-    if (ok && expected_device_number != 0 &&
-        original.device_number != static_cast<std::uint64_t>(expected_device_number)) {
+    if (ok && !iso_flash::matches_expected_device(
+                  original, static_cast<std::uint64_t>(expected_device_number))) {
         error = "Opened device does not match the requested major/minor identity";
         ok = false;
     }
