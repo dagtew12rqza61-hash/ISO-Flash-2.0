@@ -52,6 +52,26 @@ jobs:
           status=$?
           set -e
           test "$status" -eq 3
+      - name: Verify loop devices are rejected as non-USB targets
+        run: |
+          set -euo pipefail
+          image=$(mktemp)
+          loop_device=''
+          cleanup() {
+            if [ -n "$loop_device" ]; then sudo losetup --detach "$loop_device" || true; fi
+            rm -f "$image"
+          }
+          trap cleanup EXIT
+          truncate -s 16M "$image"
+          sudo modprobe loop
+          loop_device=$(sudo losetup --find --show "$image")
+          set +e
+          output=$(/usr/lib/iso-flash/iso-flash-write --check "$loop_device" 2>&1)
+          status=$?
+          set -e
+          printf '%s\\n' "$output"
+          test "$status" -eq 4
+          printf '%s' "$output" | grep -q 'no verified USB transport ancestor'
       - name: Exercise read-only D-Bus inspection API
         run: |
           set -euo pipefail
