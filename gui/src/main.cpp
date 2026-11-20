@@ -87,9 +87,7 @@ class Window final : public QMainWindow {
                 continue;
             }
 
-            QFile removable("/sys/class/block/" + name + "/removable");
-            if (!removable.open(QIODevice::ReadOnly) ||
-                removable.readAll().trimmed() != "1") {
+            if (QFile::exists("/sys/class/block/" + name + "/partition")) {
                 continue;
             }
 
