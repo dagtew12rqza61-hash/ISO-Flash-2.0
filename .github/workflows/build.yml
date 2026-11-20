@@ -124,13 +124,11 @@ jobs:
           timeout 20s sudo systemctl start dbus.service
           timeout 30s sudo systemctl start polkit.service
           sudo systemctl is-active --quiet polkit.service
-          service_pid=''
           cleanup() {
-            if [ -n "$service_pid" ]; then sudo kill "$service_pid" 2>/dev/null || true; fi
+            sudo pkill -x iso-flash-service 2>/dev/null || true
           }
           trap cleanup EXIT
           sudo /usr/lib/iso-flash/iso-flash-service >/tmp/iso-flash-real-polkit-service.log 2>&1 &
-          service_pid=$!
           service_ready=0
           for attempt in $(seq 1 50); do
             owner=$(gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.iso_flash.Manager1 2>/dev/null || true)
