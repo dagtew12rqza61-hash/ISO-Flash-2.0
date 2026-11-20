@@ -1,4 +1,5 @@
 find_package(Threads REQUIRED)
+find_package(Qt6 6.4 REQUIRED COMPONENTS DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
@@ -12,6 +13,10 @@ endif()
 add_executable(test_dbus_fd_client dbus_fd_client.cpp)
 target_link_libraries(test_dbus_fd_client PRIVATE PkgConfig::GIO PkgConfig::GIO_UNIX)
 target_compile_options(test_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
+add_executable(test_qt_dbus_fd_client qt_dbus_fd_client.cpp)
+target_link_libraries(test_qt_dbus_fd_client PRIVATE Qt6::DBus)
+target_compile_options(test_qt_dbus_fd_client PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
 add_executable(test_polkit_dbus_integration polkit_dbus_integration.cpp)
 add_executable(test_polkit_real_integration polkit_real_integration.cpp)
