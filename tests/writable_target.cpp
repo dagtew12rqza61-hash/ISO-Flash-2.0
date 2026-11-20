@@ -86,11 +86,29 @@ int main() {
         std::ofstream dev_file(device / "dev");
         dev_file << "8:1\\n";
         std::ofstream uevent(device / "uevent");
-        uevent << "DEVNAME=sda\\nDEVNAME=sdb\\n";
+        uevent << "DEVNAME=\\nDEVNAME=sdb\\n";
     }
     if (iso_flash::resolve_kernel_device_node_at(
             expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error)) {
         std::cerr << "Duplicate sysfs DEVNAME was accepted\\n";
+        fs::remove_all(root, ec);
+        return 1;
+    }
+
+    const fs::path second_device = root / "sys/devices/usb2/8:1";
+    fs::create_directories(second_device);
+    {
+        std::ofstream dev_file(second_device / "dev");
+        dev_file << "8:1\\n";
+        std::ofstream uevent(second_device / "uevent");
+        uevent << "DEVNAME=sda\\n";
+    }
+    fs::remove(sys_root / "8:1");
+    fs::create_directory_symlink(second_device, sys_root / "8:1");
+    if (!iso_flash::resolve_kernel_device_node_at(
+            expected, sys_root, dev_root, node_path, sysfs_identity, resolve_error) ||
+        sysfs_identity != fs::canonical(second_device)) {
+        std::cerr << "Changed sysfs backing identity was not observed\\n";
         fs::remove_all(root, ec);
         return 1;
     }
