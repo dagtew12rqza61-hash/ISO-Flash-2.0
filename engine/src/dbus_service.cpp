@@ -201,11 +201,26 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
         task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
         const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
         task_data->sender = sender != nullptr ? sender : "";
-        if (!task_data->sender.empty()) {
-            task_data->disconnect_subscription =
-                iso_flash::subscribe_to_caller_disconnect(
-                    connection, task_data->sender.c_str(),
-                    task_data->cancellable);
+        if (task_data->sender.empty()) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot identify the D-Bus caller for cancellation tracking"));
+            return;
+        }
+
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(),
+                task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
         }
 
         GTask* task = g_task_new(
