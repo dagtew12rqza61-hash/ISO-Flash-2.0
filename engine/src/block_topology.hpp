@@ -33,8 +33,14 @@ inline bool valid_sector_count(const std::string& value) {
            result.ptr == value.data() + value.size() && sectors > 0;
 }
 
+inline bool directory_exists_verified(const fs::path& path) {
+    std::error_code ec;
+    const fs::file_status status = fs::status(path, ec);
+    return !ec && fs::exists(status) && fs::is_directory(status);
+}
+
 // Walk from a mounted/active device toward its backing devices through sysfs slaves.
-// A missing slaves directory is valid for leaf devices; unreadable or broken links fail closed.
+// Every block-device node must expose a readable slaves directory, including leaf devices.
 inline bool depends_on(const fs::path& current, const fs::path& target,
                        bool& verified, std::set<std::string>& visited) {
     std::error_code ec;
@@ -52,12 +58,8 @@ inline bool depends_on(const fs::path& current, const fs::path& target,
     }
 
     const fs::path slaves = resolved / "slaves";
-    const bool has_slaves = fs::exists(slaves, ec);
-    if (ec) {
+    if (!directory_exists_verified(slaves)) {
         verified = false;
-        return false;
-    }
-    if (!has_slaves) {
         return false;
     }
 
