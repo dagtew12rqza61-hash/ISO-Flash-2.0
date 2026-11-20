@@ -111,6 +111,34 @@ These hardening directives and the Polkit policy are tested in CI. They are
 defense-in-depth configuration only; they do not make the currently read-only
 service capable of writing.
 
+## Writable target admission primitive (implemented, not connected)
+
+A separate move-only `WritableTarget` primitive now exists in
+`engine/src/writable_target.hpp`; the existing read-only `OpenedTarget`
+path is unchanged. The new helper resolves a requested major/minor identity
+through `/sys/dev/block`, verifies the sysfs `dev` field, extracts the
+kernel-provided `DEVNAME`, and accepts only a safe single-component device
+node basename. It constructs `/dev/DEVNAME` itself and uses `lstat` to reject
+symlinks and non-block nodes before opening.
+
+The writable open flags are fixed in code:
+`O_RDWR | O_CLOEXEC | O_EXCL | O_NOFOLLOW | O_NONBLOCK`. The helper retries
+only `EINTR`, owns the descriptor through RAII, verifies `fstat` block type
+and exact `st_rdev`, checks `BLKGETSIZE64` and `BLKROGET`, compares the
+canonical sysfs identity before and after opening, and runs the full
+DeviceGuard multiple times. A separate
+`revalidate_writable_target_before_first_write` performs descriptor,
+sysfs-node, path, capacity, read-only, and full DeviceGuard checks at the
+pre-write boundary.
+
+The unit test currently covers safe/unsafe kernel node names and the mandatory
+exclusive no-follow open flags. CI does not open a real writable block device
+through this helper and no caller invokes it. It is an admission primitive
+only: it does not authorize a user, write bytes, create a D-Bus job, or enable
+the CLI. Before any integration, it needs fault-injection coverage for
+sysfs/path replacement, ioctl failures, device loss, mount/swap races, and
+the exact first-write boundary. Physical writing remains disabled.
+
 ## Current implementation status
 
 The read-only D-Bus service and systemd activation are implemented. Read-only open and descriptor-inspection failures now provide differentiated diagnostics for common errors such as ENODEV, ENXIO, EIO, EBUSY, and permission denial; interrupted opens are retried. This improves diagnosis only and does not implement a hot-unplug-safe write job. The Polkit write policy, descriptor-passing write request, writable device open, D-Bus job integration, and physical write path are not implemented. The asynchronous worker and in-memory job registry primitives exist, but are not connected to the service. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
