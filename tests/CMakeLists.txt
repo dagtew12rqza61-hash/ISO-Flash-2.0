@@ -68,5 +68,6 @@ add_test(
   NAME systemd_service_hardening_contract
   COMMAND ${CMAKE_COMMAND}
     -DSERVICE_FILE=${CMAKE_SOURCE_DIR}/packaging/systemd/iso-flash.service
+    -DPOLKIT_POLICY=${CMAKE_SOURCE_DIR}/packaging/polkit/org.iso_flash.policy
     -P ${CMAKE_CURRENT_SOURCE_DIR}/systemd_service_contract.cmake
 )
