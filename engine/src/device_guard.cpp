@@ -1,5 +1,6 @@
 #include "device_guard.hpp"
 #include "mountinfo.hpp"
+#include "block_topology.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -12,11 +13,6 @@
 
 namespace fs = std::filesystem;
 
-static bool inside(const fs::path& child, const fs::path& parent) {
-    const auto c = child.lexically_normal().string();
-    const auto p = parent.lexically_normal().string();
-    return c == p || (c.size() > p.size() && c.compare(0, p.size(), p) == 0 && c[p.size()] == '/');
-}
 static std::string first_line(const fs::path& p) {
     std::ifstream f(p);
     std::string s;
@@ -37,53 +33,6 @@ static bool has_usb_transport_ancestor(const fs::path& device) {
             return true;
         }
         current = current.parent_path();
-    }
-    return false;
-}
-
-static bool depends_on(const fs::path& current, const fs::path& target,
-                       bool& verified, std::set<std::string>& visited) {
-    std::error_code ec;
-    const fs::path resolved = fs::canonical(current, ec);
-    if (ec) {
-        verified = false;
-        return false;
-    }
-    if (resolved == target || inside(resolved, target)) {
-        return true;
-    }
-
-    const std::string key = resolved.string();
-    if (!visited.insert(key).second) {
-        return false;
-    }
-
-    const fs::path slaves = resolved / "slaves";
-    if (!fs::exists(slaves, ec)) {
-        if (ec) verified = false;
-        return false;
-    }
-
-    fs::directory_iterator it(slaves, ec);
-    const fs::directory_iterator end;
-    if (ec) {
-        verified = false;
-        return false;
-    }
-    for (; it != end; it.increment(ec)) {
-        if (ec) {
-            verified = false;
-            return false;
-        }
-        if (depends_on(it->path(), target, verified, visited)) {
-            return true;
-        }
-        if (!verified) {
-            return false;
-        }
-    }
-    if (ec) {
-        verified = false;
     }
     return false;
 }
@@ -144,7 +93,7 @@ bool validate_target(const std::string& device, std::string& error) {
     }
     bool root_topology_verified = true;
     std::set<std::string> visited_root_devices;
-    if (depends_on(root_sys, real, root_topology_verified, visited_root_devices)) {
+    if (iso_flash::depends_on(root_sys, real, root_topology_verified, visited_root_devices)) {
         error = "Refusing to overwrite the system disk or one of its backing devices";
         return false;
     }
@@ -173,7 +122,7 @@ bool validate_target(const std::string& device, std::string& error) {
         }
         bool topology_verified = true;
         std::set<std::string> visited;
-        if (depends_on(mounted, real, topology_verified, visited)) {
+        if (iso_flash::depends_on(mounted, real, topology_verified, visited)) {
             error = "Target or one of its backing devices contains a mounted filesystem";
             return false;
         }
@@ -207,7 +156,7 @@ bool validate_target(const std::string& device, std::string& error) {
             }
             bool topology_verified = true;
             std::set<std::string> visited;
-            if (depends_on(swap_dev, real, topology_verified, visited)) {
+            if (iso_flash::depends_on(swap_dev, real, topology_verified, visited)) {
                 error = "Target or one of its backing devices is used for swap";
                 return false;
             }
