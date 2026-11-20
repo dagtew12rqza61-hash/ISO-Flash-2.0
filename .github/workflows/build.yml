@@ -26,12 +26,13 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf pkg-engine pkg-app dist
-          mkdir -p pkg-engine/DEBIAN pkg-engine/usr/lib/iso-flash pkg-engine/usr/share/dbus-1/system-services pkg-engine/usr/lib/systemd/system pkg-app/DEBIAN pkg-app/usr/bin pkg-app/usr/share/applications dist
+          mkdir -p pkg-engine/DEBIAN pkg-engine/usr/lib/iso-flash pkg-engine/usr/share/dbus-1/system-services pkg-engine/usr/lib/systemd/system pkg-engine/usr/share/polkit-1/actions pkg-app/DEBIAN pkg-app/usr/bin pkg-app/usr/share/applications dist
           install -m 0755 build/engine/iso-flash-write pkg-engine/usr/lib/iso-flash/iso-flash-write
           install -m 0755 build/engine/iso-flash-service pkg-engine/usr/lib/iso-flash/iso-flash-service
           install -m 0644 packaging/engine/control pkg-engine/DEBIAN/control
           install -m 0644 packaging/dbus/org.iso_flash.Manager1.service pkg-engine/usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
           install -m 0644 packaging/systemd/iso-flash.service pkg-engine/usr/lib/systemd/system/iso-flash.service
+          install -m 0644 packaging/polkit/org.iso_flash.policy pkg-engine/usr/share/polkit-1/actions/org.iso_flash.policy
           install -m 0644 packaging/application/control pkg-app/DEBIAN/control
           install -m 0755 build/gui/iso-flash pkg-app/usr/bin/iso-flash
           install -m 0644 packaging/iso-flash.desktop pkg-app/usr/share/applications/iso-flash.desktop
@@ -49,6 +50,11 @@ jobs:
           test -x /usr/bin/iso-flash
           test -f /usr/share/dbus-1/system-services/org.iso_flash.Manager1.service
           test -f /usr/lib/systemd/system/iso-flash.service
+          test -f /usr/share/polkit-1/actions/org.iso_flash.policy
+          grep -q '<action id="org.iso_flash.write">' /usr/share/polkit-1/actions/org.iso_flash.policy
+          grep -q '<allow_any>no</allow_any>' /usr/share/polkit-1/actions/org.iso_flash.policy
+          grep -q '<allow_active>auth_admin</allow_active>' /usr/share/polkit-1/actions/org.iso_flash.policy
+          grep -q '<allow_inactive>auth_admin</allow_inactive>' /usr/share/polkit-1/actions/org.iso_flash.policy
           systemd-analyze verify /usr/lib/systemd/system/iso-flash.service
           if grep -q '^ProcSubset=pid$' /usr/lib/systemd/system/iso-flash.service; then echo 'ProcSubset=pid hides /proc/swaps required by DeviceGuard' >&2; exit 1; fi
           grep -q '^ProtectProc=invisible$' /usr/lib/systemd/system/iso-flash.service
