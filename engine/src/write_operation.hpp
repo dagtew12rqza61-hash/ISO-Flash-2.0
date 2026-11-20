@@ -1,6 +1,7 @@
 #pragma once
 
 #include "image_source.hpp"
+#include "image_hash.hpp"
 #include "write_io.hpp"
 
 #include <array>
@@ -153,6 +154,7 @@ inline VerifiedWriteResult write_image_and_verify(
         return result;
     }
 
+    result.status = WriteIoStatus::Completed;
     constexpr std::size_t chunk_size = 1024U * 1024U;
     std::array<unsigned char, chunk_size> buffer{};
     while (result.bytes_transferred < image_snapshot.size_bytes) {
