@@ -5,9 +5,10 @@ The first system service milestone exports only
 
 The service resolves the supplied major/minor pair as
 `/dev/block/MAJOR:MINOR` and calls the same read-only target inspection path
-used by the engine. It never accepts an arbitrary device path from the caller.
-The D-Bus method is intentionally read-only and does not authorize or perform
-writes.
+used by the engine. The opened descriptor's device number must match the exact
+requested major/minor pair; a substituted or mismatched device node is rejected.
+The service never accepts an arbitrary device path from the caller. The D-Bus
+method is intentionally read-only and does not authorize or perform writes.
 
 The service runs as root because device-node access and complete system
 metadata inspection must be consistent across desktop sessions. Its systemd
