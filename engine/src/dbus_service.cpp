@@ -5,6 +5,7 @@
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
+#include <atomic>
 #include <cstdint>
 #include <new>
 #include <string>
@@ -13,6 +14,8 @@
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
 constexpr const char* kObjectPath = "/org/iso_flash/Manager1";
+constexpr unsigned int kMaxConcurrentImageValidations = 2;
+std::atomic<unsigned int> g_active_image_validations{0};
 
 constexpr const char* kIntrospectionXml = R"xml(
 <node>
@@ -46,6 +49,10 @@ void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
 struct ImageValidationTaskData {
     iso_flash::UniqueFd descriptor;
     iso_flash::ImageFdValidationResult validation;
+
+    ~ImageValidationTaskData() {
+        g_active_image_validations.fetch_sub(1, std::memory_order_acq_rel);
+    }
 };
 
 void image_validation_worker(GTask* task, gpointer, gpointer task_data,
@@ -142,9 +149,25 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
             return;
         }
 
+        unsigned int active = g_active_image_validations.load(std::memory_order_acquire);
+        while (active < kMaxConcurrentImageValidations &&
+               !g_active_image_validations.compare_exchange_weak(
+                   active, active + 1, std::memory_order_acq_rel,
+                   std::memory_order_acquire)) {
+        }
+        if (active >= kMaxConcurrentImageValidations) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Image validation capacity is busy; retry later"));
+            return;
+        }
+
         auto* task_data = new (std::nothrow) ImageValidationTaskData{
             iso_flash::UniqueFd(received_fd), {}};
         if (task_data == nullptr) {
+            g_active_image_validations.fetch_sub(1, std::memory_order_acq_rel);
             (void)::close(received_fd);
             g_dbus_method_invocation_return_value(
                 invocation,
