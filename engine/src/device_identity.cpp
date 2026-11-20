@@ -11,7 +11,8 @@
 #include <unistd.h>
 
 bool inspect_target_read_only(const std::string& device, std::string& error,
-                              std::uint64_t& capacity_bytes) {
+                              std::uint64_t& capacity_bytes,
+                              dev_t expected_device_number) {
     capacity_bytes = 0;
     int raw_fd = -1;
     const auto open_function = [](const char* path, int flags) {
@@ -32,6 +33,11 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     iso_flash::DeviceSnapshot original{};
     bool ok = iso_flash::read_device_snapshot(
         fd.get(), original, error, fstat_function, ioctl_function);
+    if (ok && expected_device_number != 0 &&
+        original.device_number != static_cast<std::uint64_t>(expected_device_number)) {
+        error = "Opened device does not match the requested major/minor identity";
+        ok = false;
+    }
     if (ok && !validate_target_device(static_cast<dev_t>(original.device_number), error)) {
         error = "Opened device failed descriptor-bound safety inspection: " + error;
         ok = false;
