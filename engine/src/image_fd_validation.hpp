@@ -5,6 +5,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <functional>
 #include <string>
 
 namespace iso_flash {
@@ -55,7 +56,9 @@ inline ImageFdValidationResult validate_image_fd(
         hash_image_sha256(fd, result.snapshot, cancel_requested);
     result.bytes_hashed = hash.bytes_hashed;
     if (hash.status != ImageHashStatus::Completed) {
-        result.error_number = hash.error_number == 0 ? EIO : hash.error_number;
+        result.error_number = hash.status == ImageHashStatus::Cancelled
+            ? ECANCELED
+            : (hash.error_number == 0 ? EIO : hash.error_number);
         result.reason = hash.error.empty() ? "Image SHA-256 validation failed" : hash.error;
         return result;
     }
