@@ -2,12 +2,12 @@
 #include "device_io.hpp"
 #include "image_fd_validation.hpp"
 #include "image_validation_limiter.hpp"
+#include "image_validation_task.hpp"
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
 #include <cstdint>
-#include <exception>
 #include <new>
 #include <string>
 #include <utility>
@@ -57,17 +57,16 @@ struct ImageValidationTaskData {
 void image_validation_worker(GTask* task, gpointer, gpointer task_data,
                              GCancellable*) {
     auto* data = static_cast<ImageValidationTaskData*>(task_data);
-    try {
-        data->validation = iso_flash::validate_image_fd(data->descriptor.get());
-        g_task_return_boolean(task, TRUE);
-    } catch (const std::exception& exception) {
-        g_task_return_new_error(task, G_IO_ERROR, G_IO_ERROR_FAILED,
-                                "Image validation raised an exception: %s",
-                                exception.what());
-    } catch (...) {
-        g_task_return_new_error(task, G_IO_ERROR, G_IO_ERROR_FAILED,
-                                "Image validation failed with an unknown exception");
+    auto outcome = iso_flash::run_image_validation_task(
+        data->descriptor.get(), iso_flash::validate_image_fd);
+    if (!outcome.completed) {
+        g_task_return_new_error(
+            task, G_IO_ERROR, G_IO_ERROR_FAILED, "Image validation failed: %s",
+            outcome.error.c_str());
+        return;
     }
+    data->validation = std::move(outcome.validation);
+    g_task_return_boolean(task, TRUE);
 }
 
 void image_validation_complete(GObject*, GAsyncResult* async_result,
