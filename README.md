@@ -4,7 +4,7 @@ C++20 / Qt 6 Linux USB image writer project.
 
 ## Development status
 
-**Early development — physical writing is deliberately disabled.** The current GUI can select an ISO and list removable block-device candidates. The privileged writer executable exits without opening or modifying any device.
+**Early development — physical writing is deliberately disabled.** The current GUI can select an ISO and list removable block-device candidates. The writer's `--check DEVICE` mode performs read-only inspection; the destructive `--write` mode exits without opening or modifying any device.
 
 This is intentional. The existing device guard is not yet a complete authorization boundary: device identity must be revalidated after privilege escalation and bound to the opened block-device file descriptor; read-only state, parent/child device topology, hot-unplug races, and cancellation semantics need additional coverage. No physical-media write should be enabled until these controls and destructive-path tests pass.
 
