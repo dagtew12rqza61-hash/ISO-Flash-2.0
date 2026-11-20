@@ -1,6 +1,7 @@
 #include "block_topology.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <string>
@@ -39,6 +40,33 @@ int main() {
     fs::create_directories(partition);
     fs::create_directories(dm / "slaves");
     fs::create_directories(unrelated);
+
+    const fs::path holders = disk / "holders";
+    fs::create_directories(holders);
+    bool holders_empty = false;
+    if (!iso_flash::directory_is_empty_verified(holders, holders_empty) ||
+        !holders_empty) {
+        std::cerr << "Empty sysfs holders directory was not verified\n";
+        fs::remove_all(root, ec);
+        return 1;
+    }
+    {
+        std::ofstream holder(holders / "dm-0");
+        holder << "active";
+    }
+    if (!iso_flash::directory_is_empty_verified(holders, holders_empty) ||
+        holders_empty) {
+        std::cerr << "Non-empty sysfs holders directory was not detected\n";
+        fs::remove_all(root, ec);
+        return 1;
+    }
+    fs::remove(holders / "dm-0");
+    fs::remove(holders);
+    if (iso_flash::directory_is_empty_verified(holders, holders_empty)) {
+        std::cerr << "Missing sysfs holders metadata was accepted\n";
+        fs::remove_all(root, ec);
+        return 1;
+    }
 
     fs::create_directory_symlink(partition, dm / "slaves/sda1");
 
