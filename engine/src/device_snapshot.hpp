@@ -29,6 +29,12 @@ inline bool same_opened_target(const DeviceSnapshot& original,
            same_writable_device(original, opened_current);
 }
 
+inline bool matches_expected_device(const DeviceSnapshot& opened,
+                                    std::uint64_t expected_device_number) {
+    return expected_device_number == 0 ||
+           opened.device_number == expected_device_number;
+}
+
 template <typename FstatFunction, typename IoctlFunction>
 bool read_device_snapshot(int fd, DeviceSnapshot& snapshot, std::string& error,
                           FstatFunction&& fstat_function,
