@@ -41,11 +41,6 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         ok = false;
     }
 
-    if (ok && !validate_target_device(static_cast<dev_t>(original.device_number), error)) {
-        error = "Opened device failed safety revalidation: " + error;
-        ok = false;
-    }
-
     struct stat path_after{};
     iso_flash::DeviceSnapshot opened_after{};
     if (ok && (::stat(device.c_str(), &path_after) != 0 ||
@@ -62,6 +57,10 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
     if (ok && !iso_flash::same_opened_target(
                   original, static_cast<std::uint64_t>(path_after.st_rdev), opened_after)) {
         error = "Target identity, capacity, or writable state changed during validation";
+        ok = false;
+    }
+    if (ok && !validate_target_device(static_cast<dev_t>(original.device_number), error)) {
+        error = "Opened device failed safety revalidation: " + error;
         ok = false;
     }
 
