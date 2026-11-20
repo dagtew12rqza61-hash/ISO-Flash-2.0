@@ -15,7 +15,7 @@ The service never accepts an arbitrary device path from the caller.
 passing. It duplicates the received descriptor into service-owned RAII
 ownership, requires the descriptor access mode to be read-only, verifies that
 it refers to a nonempty regular file, and computes SHA-256 through bounded positional reads on a GLib worker thread,
-keeping the D-Bus main loop responsive. The service admits at most two concurrent
+keeping the D-Bus main loop responsive. The worker boundary catches both standard and unknown C++ exceptions and converts them into a failed D-Bus validation reply instead of allowing an exception to escape through GLib's C callback. The service admits at most two concurrent
 image validations through a move-only RAII capacity lease. Excess requests are
 rejected with a retryable busy response. The lease is released automatically
 when the asynchronous task data is destroyed, including completion and task
