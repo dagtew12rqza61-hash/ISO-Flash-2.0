@@ -4,6 +4,6 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: ISO Flash Project
-Depends: libc6, libstdc++6, libglib2.0-0
+Depends: libc6, libstdc++6, libglib2.0-0t64
 Description: ISO Flash USB image writer engine
  Separate low-level Linux block-device image writer and read-only system D-Bus inspection service.
