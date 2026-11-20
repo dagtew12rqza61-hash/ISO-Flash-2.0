@@ -1,6 +1,7 @@
 #include <gio/gio.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <iostream>
@@ -90,6 +91,12 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
                       g_variant_builder_end(&result_details)));
 }
 
+void authority_name_acquired(GDBusConnection*, const gchar*, gpointer) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_ready = true;
+    g_ready_condition.notify_all();
+}
+
 void authority_thread() {
     GMainContext* context = g_main_context_new();
     g_main_context_push_thread_default(context);
@@ -139,12 +146,8 @@ void authority_thread() {
     g_loop = g_main_loop_new(context, FALSE);
     guint owner = g_bus_own_name_on_connection(
         connection, "org.freedesktop.PolicyKit1",
-        G_BUS_NAME_OWNER_FLAGS_NONE, nullptr, nullptr, nullptr, nullptr);
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_ready = true;
-        g_ready_condition.notify_all();
-    }
+        G_BUS_NAME_OWNER_FLAGS_NONE, nullptr, authority_name_acquired,
+        nullptr, nullptr);
     g_main_loop_run(g_loop);
     g_bus_unown_name(owner);
     g_dbus_connection_unregister_object(connection, registration);
@@ -175,7 +178,7 @@ bool call_authorization(GDBusConnection* connection, bool expected,
     guint32 pid = 0;
     guint64 start_ticks = 0;
     const gchar* reason = nullptr;
-    g_variant_get(reply, "(buu t&s)", &authorized, &uid, &pid,
+    g_variant_get(reply, "(buut&s)", &authorized, &uid, &pid,
                   &start_ticks, &reason);
     const bool identity_ok = !verify_identity ||
         (uid == static_cast<guint32>(::getuid()) &&
