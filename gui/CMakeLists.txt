@@ -1,5 +1,6 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets DBus)
 qt_add_executable(iso-flash src/main.cpp)
-target_link_libraries(iso-flash PRIVATE Qt6::Widgets)
+target_link_libraries(iso-flash PRIVATE Qt6::Widgets Qt6::DBus)
 target_compile_options(iso-flash PRIVATE -Wall -Wextra -Wpedantic)
 install(TARGETS iso-flash RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
