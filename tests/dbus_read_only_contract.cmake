@@ -26,6 +26,12 @@ if(NOT service_source MATCHES "g_task_run_in_thread")
   message(FATAL_ERROR "ValidateImage must hash asynchronously outside the D-Bus main loop")
 endif()
 
+if(NOT service_source MATCHES "catch \\(const std::exception&" OR
+   NOT service_source MATCHES "catch \\(\\.\\.\\.\\)" OR
+   NOT service_source MATCHES "g_task_return_new_error")
+  message(FATAL_ERROR "C++ exceptions must be contained at the GLib worker callback boundary")
+endif()
+
 if(NOT DEFINED LIMITER_HEADER OR NOT EXISTS "${LIMITER_HEADER}")
   message(FATAL_ERROR "Image validation limiter header is missing")
 endif()
