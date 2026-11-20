@@ -17,6 +17,7 @@ set(ISO_FLASH_TESTS
   image_hash
   image_source
   image_validation
+  image_validation_limiter
   mountinfo_parser
   opened_image_job
   opened_target_job
