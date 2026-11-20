@@ -25,6 +25,8 @@ cmake --build build --parallel 2
 - [x] Initial Linux block-device guard prototype
 - [x] Synthetic sysfs dependency traversal regression tests
 - [x] Strict sysfs capacity metadata parsing
+- [x] Injected block-device metadata/read failure tests (`EIO`, `ENODEV`)
+- [x] Snapshot revalidation tests for device replacement, capacity changes, and read-only transitions
 - [x] Fail-closed handling for filesystem metadata exceptions
 - [x] Separate writer executable boundary
 - [x] Disable physical writes in development builds
@@ -36,7 +38,8 @@ cmake --build build --parallel 2
 - [ ] Complete bidirectional block-device topology validation
 - [ ] Asynchronous writing with safe cancellation and progress
 - [ ] SHA-256 and read-back verification
-- [ ] Automated tests using disposable loop devices
+- [x] Loop-device rejection smoke test (no writes)
+- [ ] Destructive-path tests using disposable loop devices
 - [ ] Separate Windows installer media preparation
 - [ ] Verified Debian packages and signed release
 
