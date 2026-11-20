@@ -125,18 +125,21 @@ jobs:
           sudo systemctl start polkit.service
           sudo systemctl is-active --quiet polkit.service
           sudo systemctl start iso-flash.service
+          polkit_ready=0
           for attempt in $(seq 1 50); do
-            if build/tests/test_polkit_real_integration; then
-              exit 0
+            owner=$(gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.freedesktop.PolicyKit1 2>/dev/null || true)
+            if printf '%s' "$owner" | grep -q true; then
+              polkit_ready=1
+              break
             fi
-            status=$?
-            if [ "$status" -ne 1 ]; then exit "$status"; fi
             sleep 0.2
           done
-          echo "Real system Polkit integration did not become ready" >&2
-          sudo journalctl -u polkit.service -n 100 --no-pager || true
-          sudo journalctl -u iso-flash.service -n 100 --no-pager || true
-          exit 1
+          if [ "$polkit_ready" -ne 1 ]; then
+            echo "Real Polkit daemon did not acquire its system-bus name" >&2
+            sudo journalctl -u polkit.service -n 100 --no-pager || true
+            exit 1
+          fi
+          build/tests/test_polkit_real_integration
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
