@@ -53,8 +53,9 @@ bool validate_target_device(dev_t device_number, std::string& error) {
         return false;
     }
     const bool has_usb_transport = has_usb_transport_ancestor(real);
+    bool is_test_loop_device = false;
 #ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
-    const bool is_test_loop_device =
+    is_test_loop_device =
         real.parent_path() == fs::path("/sys/devices/virtual/block") &&
         real.filename().string().rfind("loop", 0) == 0 &&
         fs::is_directory(real / "loop");
@@ -89,18 +90,27 @@ bool validate_target_device(dev_t device_number, std::string& error) {
     }
     const fs::path root_sys = sys_device(root.st_dev, ec);
     if (ec) {
+#ifdef ISO_FLASH_TEST_ALLOW_LOOP_TARGETS
+        if (!is_test_loop_device) {
+            error = "Cannot resolve the system root device in sysfs";
+            return false;
+        }
+#else
         error = "Cannot resolve the system root device in sysfs";
         return false;
-    }
-    bool root_topology_verified = true;
-    std::set<std::string> visited_root_devices;
-    if (iso_flash::depends_on(root_sys, real, root_topology_verified, visited_root_devices)) {
-        error = "Refusing to overwrite the system disk or one of its backing devices";
-        return false;
-    }
-    if (!root_topology_verified) {
-        error = "Cannot verify the complete system disk dependency chain";
-        return false;
+#endif
+    } else {
+        bool root_topology_verified = true;
+        std::set<std::string> visited_root_devices;
+        if (iso_flash::depends_on(
+                root_sys, real, root_topology_verified, visited_root_devices)) {
+            error = "Refusing to overwrite the system disk or one of its backing devices";
+            return false;
+        }
+        if (!root_topology_verified) {
+            error = "Cannot verify the complete system disk dependency chain";
+            return false;
+        }
     }
 
     std::ifstream mounts("/proc/self/mountinfo");
