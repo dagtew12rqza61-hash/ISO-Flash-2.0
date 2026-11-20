@@ -78,6 +78,9 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
 
     ++g_calls;
     const int mode = g_mode.load();
+    if (mode == 2) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(750));
+    }
     if (mode < 0) {
         g_dbus_method_invocation_return_error(
             invocation, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
@@ -249,13 +252,79 @@ int main() {
     ok = call_authorization(client, false, true, true) && ok;
     g_mode = -1;
     ok = call_authorization(client, false, true, true) && ok;
-    if (g_calls.load() != 3) {
-        std::cerr << "Polkit authority did not receive all expected calls\n";
+    g_dbus_connection_close_sync(client, nullptr, nullptr);
+    g_object_unref(client);
+
+    GDBusConnection* disconnect_client =
+        g_dbus_connection_new_for_address_sync(
+            g_getenv("DBUS_SYSTEM_BUS_ADDRESS"),
+            static_cast<GDBusConnectionFlags>(
+                G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
+            nullptr, nullptr, &error);
+    if (disconnect_client == nullptr) {
+        std::cerr << (error != nullptr ? error->message :
+                      "Cannot connect disconnect-test client") << '\\n';
+        if (error != nullptr) g_error_free(error);
+        g_main_loop_quit(g_loop);
+        authority.join();
+        return 4;
+    }
+
+    g_mode = 2;
+    const unsigned calls_before_disconnect = g_calls.load();
+    g_dbus_connection_call(
+        disconnect_client, "org.iso_flash.Manager1",
+        "/org/iso_flash/Manager1", "org.iso_flash.Manager1",
+        "CheckWriteAuthorization", nullptr, G_VARIANT_TYPE("(buuts)"),
+        G_DBUS_CALL_FLAGS_NONE, 15000, nullptr, nullptr, nullptr);
+    const gint64 authorization_deadline =
+        g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
+    while (g_calls.load() == calls_before_disconnect &&
+           g_get_monotonic_time() < authorization_deadline) {
+        g_usleep(1000);
+    }
+    if (g_calls.load() != calls_before_disconnect + 1) {
+        std::cerr << "Disconnect test did not reach the in-flight Polkit request\\n";
+        ok = false;
+    } else {
+        GError* close_error = nullptr;
+        if (!g_dbus_connection_close_sync(
+                disconnect_client, nullptr, &close_error)) {
+            std::cerr << (close_error != nullptr ? close_error->message :
+                          "Could not disconnect authorization caller") << '\\n';
+            if (close_error != nullptr) g_error_free(close_error);
+            ok = false;
+        }
+    }
+    g_object_unref(disconnect_client);
+    g_usleep(1000000);
+
+    GDBusConnection* recovery_client =
+        g_dbus_connection_new_for_address_sync(
+            g_getenv("DBUS_SYSTEM_BUS_ADDRESS"),
+            static_cast<GDBusConnectionFlags>(
+                G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
+            nullptr, nullptr, &error);
+    if (recovery_client == nullptr) {
+        std::cerr << (error != nullptr ? error->message :
+                      "Cannot connect recovery client") << '\\n';
+        if (error != nullptr) g_error_free(error);
+        ok = false;
+    } else {
+        g_mode = 1;
+        ok = call_authorization(recovery_client, true, false, true) && ok;
+        g_dbus_connection_close_sync(recovery_client, nullptr, nullptr);
+        g_object_unref(recovery_client);
+    }
+
+    if (g_calls.load() != 5) {
+        std::cerr << "Polkit authority call count mismatch after disconnect/recovery: "
+                  << g_calls.load() << '\\n';
         ok = false;
     }
 
-    g_dbus_connection_close_sync(client, nullptr, nullptr);
-    g_object_unref(client);
     g_main_loop_quit(g_loop);
     authority.join();
     return ok ? 0 : 3;
