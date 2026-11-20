@@ -28,6 +28,19 @@ static fs::path sys_device(dev_t number, std::error_code& ec) {
         (std::to_string(major(number)) + ":" + std::to_string(minor(number))), ec);
 }
 
+static bool has_usb_transport_ancestor(const fs::path& device) {
+    fs::path current = device;
+    while (!current.empty() && current != current.root_path()) {
+        std::error_code ec;
+        const fs::path subsystem = fs::canonical(current / "subsystem", ec);
+        if (!ec && subsystem == fs::path("/sys/bus/usb")) {
+            return true;
+        }
+        current = current.parent_path();
+    }
+    return false;
+}
+
 static bool depends_on(const fs::path& current, const fs::path& target,
                        bool& verified, std::set<std::string>& visited) {
     std::error_code ec;
@@ -91,8 +104,8 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Select the whole drive, not a partition";
         return false;
     }
-    if (real.string().find("/usb") == std::string::npos) {
-        error = "Device is not positively identified as USB storage";
+    if (!has_usb_transport_ancestor(real)) {
+        error = "Device has no verified USB transport ancestor in sysfs";
         return false;
     }
     const std::string read_only = first_line(real / "ro");
