@@ -3,7 +3,8 @@
 #include <gio/gio.h>
 
 #include <exception>
-#include <string>\n#include <sys/sysmacros.h>
+#include <string>
+#include <sys/sysmacros.h>
 
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
