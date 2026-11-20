@@ -32,3 +32,18 @@ foreach(REQUIRED_DIRECTIVE
     message(FATAL_ERROR "Required service sandbox directive missing: ${REQUIRED_DIRECTIVE}")
   endif()
 endforeach()
+
+if(NOT DEFINED POLKIT_POLICY OR NOT EXISTS "${POLKIT_POLICY}")
+  message(FATAL_ERROR "Polkit write authorization policy is missing")
+endif()
+file(READ "${POLKIT_POLICY}" POLKIT_CONTENT)
+foreach(REQUIRED_POLICY_VALUE
+    "org.iso_flash.write"
+    "<allow_any>no</allow_any>"
+    "<allow_inactive>auth_admin</allow_inactive>"
+    "<allow_active>auth_admin</allow_active>")
+  string(FIND "${POLKIT_CONTENT}" "${REQUIRED_POLICY_VALUE}" POSITION)
+  if(POSITION EQUAL -1)
+    message(FATAL_ERROR "Required restrictive Polkit policy value missing: ${REQUIRED_POLICY_VALUE}")
+  endif()
+endforeach()
