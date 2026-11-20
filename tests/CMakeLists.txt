@@ -35,6 +35,7 @@ set(ISO_FLASH_TESTS
   opened_image_job
   opened_target_job
   write_io
+  write_operation
   write_job
   write_job_control
   write_job_registry
@@ -54,7 +55,7 @@ foreach(test_name IN LISTS ISO_FLASH_TESTS)
   if(test_name STREQUAL "polkit_authorization")
     target_link_libraries(test_${test_name} PRIVATE PkgConfig::GIO)
   endif()
-  if(test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation" OR test_name STREQUAL "image_fd_validation" OR test_name STREQUAL "image_validation_task")
+  if(test_name STREQUAL "write_operation" OR test_name STREQUAL "image_hash" OR test_name STREQUAL "image_validation" OR test_name STREQUAL "image_fd_validation" OR test_name STREQUAL "image_validation_task")
     target_link_libraries(test_${test_name} PRIVATE PkgConfig::GLIB)
   endif()
   add_test(NAME ${test_name} COMMAND test_${test_name})
