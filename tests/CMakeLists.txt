@@ -112,3 +112,10 @@ add_test(
     -DSERVICE_FILE=${CMAKE_SOURCE_DIR}/packaging/systemd/iso-flash.service
     -P ${CMAKE_CURRENT_SOURCE_DIR}/systemd_service_contract.cmake
 )
+
+add_test(
+  NAME dbus_service_exposes_inspection_only_interface
+  COMMAND ${CMAKE_COMMAND}
+    -DSERVICE_SOURCE=${CMAKE_SOURCE_DIR}/engine/src/dbus_service.cpp
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/dbus_read_only_contract.cmake
+)
