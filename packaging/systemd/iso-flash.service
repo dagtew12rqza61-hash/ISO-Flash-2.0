@@ -1,0 +1,35 @@
+[Unit]
+Description=ISO Flash read-only device inspection service
+Documentation=https://github.com/dagtew12rqza61-hash/ISO-Flash-2.0
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.iso_flash.Manager1
+ExecStart=/usr/lib/iso-flash/iso-flash-service
+User=root
+Group=root
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+PrivateTmp=true
+PrivateDevices=false
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectProc=invisible
+ProcSubset=pid
+
+[Install]
+WantedBy=multi-user.target
