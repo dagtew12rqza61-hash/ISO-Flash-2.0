@@ -47,7 +47,8 @@ cmake --build build --parallel 2
 - [ ] D-Bus job lifecycle integration and Polkit authorization
 - [ ] Descriptor-bound image and writable-device validation
 - [ ] Hot-unplug-safe physical writing with safe cancellation and progress
-- [ ] SHA-256 and read-back verification
+- [x] Standalone SHA-256 hashing from the open ISO descriptor with before/after metadata checks and fault-injection tests
+- [ ] Hash integration into the privileged write protocol and read-back verification
 - [x] Loop-device rejection smoke test (no writes)
 - [ ] Destructive-path tests using disposable loop devices
 - [ ] Separate Windows installer media preparation
