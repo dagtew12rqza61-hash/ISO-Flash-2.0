@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QProgressBar>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QDir>
 #include <QFile>
@@ -155,6 +156,16 @@ class Window final : public QMainWindow {
     void start_write() {
         if (imagePath.isEmpty() || drives->currentIndex() < 0 ||
             activeJob != 0) {
+            return;
+        }
+
+        const QString warning =
+            "Все данные на выбранном USB-накопителе будут уничтожены. "
+            "Продолжайте только если выбрали правильное устройство.";
+        if (QMessageBox::warning(
+                this, "Подтверждение записи",
+                warning, QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel) != QMessageBox::Yes) {
             return;
         }
 
