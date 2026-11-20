@@ -157,6 +157,17 @@ jobs:
           timeout 30s sudo systemctl start polkit.service
           sudo systemctl is-active --quiet polkit.service
           timeout 30s sudo systemctl start iso-flash.service
+          sudo systemctl enable iso-flash.service
+          sudo systemctl is-enabled --quiet iso-flash.service
+          set +e
+          QT_QPA_PLATFORM=offscreen timeout 10s /usr/bin/iso-flash >/tmp/iso-flash-gui-smoke.log 2>&1
+          gui_status=$?
+          set -e
+          if [ "$gui_status" -ne 124 ]; then
+            cat /tmp/iso-flash-gui-smoke.log || true
+            echo "Qt GUI did not remain alive during the offscreen D-Bus smoke test" >&2
+            exit 1
+          fi
           build/tests/test_polkit_real_integration
           sudo systemctl restart iso-flash.service
           sudo systemctl is-active --quiet iso-flash.service
