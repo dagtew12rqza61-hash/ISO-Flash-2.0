@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <system_error>
+#include <vector>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 
