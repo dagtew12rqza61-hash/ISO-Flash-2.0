@@ -16,6 +16,16 @@ inline bool path_is_inside(const fs::path& child, const fs::path& parent) {
     return c == p || (c.size() > p.size() && c.compare(0, p.size(), p) == 0 && c[p.size()] == '/');
 }
 
+inline bool directory_is_empty_verified(const fs::path& path, bool& empty) {
+    std::error_code ec;
+    const fs::file_status status = fs::status(path, ec);
+    if (ec || !fs::exists(status) || !fs::is_directory(status)) {
+        return false;
+    }
+    empty = fs::is_empty(path, ec);
+    return !ec;
+}
+
 inline bool valid_sector_count(const std::string& value) {
     std::uint64_t sectors = 0;
     const auto result = std::from_chars(value.data(), value.data() + value.size(), sectors);
