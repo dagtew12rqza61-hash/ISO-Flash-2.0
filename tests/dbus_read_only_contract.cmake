@@ -54,11 +54,10 @@ if(NOT service_source MATCHES "g_unix_fd_list_get")
   message(FATAL_ERROR "ValidateImage must receive the passed descriptor through GUnixFDList")
 endif()
 
-if(NOT service_source MATCHES "NameOwnerChanged" OR
-   NOT service_source MATCHES "g_cancellable_cancel" OR
+if(NOT service_source MATCHES "subscribe_to_caller_disconnect" OR
    NOT service_source MATCHES "g_cancellable_is_cancelled" OR
    NOT service_source MATCHES "g_dbus_connection_signal_unsubscribe")
-  message(FATAL_ERROR "Image hashing must be cancelled and disconnected from the D-Bus caller lifecycle")
+  message(FATAL_ERROR "Image hashing must be connected to the tested D-Bus caller lifecycle")
 endif()
 
 if(NOT DEFINED CALLER_WATCH_HEADER OR NOT EXISTS "${CALLER_WATCH_HEADER}")
