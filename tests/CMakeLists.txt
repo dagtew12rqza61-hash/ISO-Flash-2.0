@@ -60,6 +60,7 @@ add_test(
     -DSERVICE_SOURCE=${CMAKE_SOURCE_DIR}/engine/src/dbus_service.cpp
     -DLIMITER_HEADER=${CMAKE_SOURCE_DIR}/engine/src/image_validation_limiter.hpp
     -DTASK_HEADER=${CMAKE_SOURCE_DIR}/engine/src/image_validation_task.hpp
+    -DCALLER_WATCH_HEADER=${CMAKE_SOURCE_DIR}/engine/src/dbus_caller_watch.hpp
     -P ${CMAKE_CURRENT_SOURCE_DIR}/dbus_read_only_contract.cmake
 )
 
