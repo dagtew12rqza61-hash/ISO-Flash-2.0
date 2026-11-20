@@ -15,7 +15,10 @@ The service never accepts an arbitrary device path from the caller.
 passing. It duplicates the received descriptor into service-owned RAII
 ownership, requires the descriptor access mode to be read-only, verifies that
 it refers to a nonempty regular file, and computes SHA-256 through bounded positional reads on a GLib worker thread,
-keeping the D-Bus main loop responsive. No caller-supplied path is opened.
+keeping the D-Bus main loop responsive. The service admits at most two concurrent
+image validations and rejects excess requests with a retryable busy response,
+preventing unbounded hashing tasks from exhausting the privileged service.
+No caller-supplied path is opened.
 The method does not write to the image or any target device.
 
 The service runs as root because device-node access and complete system
