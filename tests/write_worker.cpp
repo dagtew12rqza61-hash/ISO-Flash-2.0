@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <future>
 #include <iostream>
+#include <stdexcept>
 #include <unistd.h>
 #include <utility>
 
