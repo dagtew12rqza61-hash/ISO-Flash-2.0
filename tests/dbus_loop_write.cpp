@@ -342,7 +342,7 @@ int main(int argc, char** argv) {
 
     g_dbus_connection_signal_unsubscribe(owner, progress_subscription);
     g_dbus_connection_signal_unsubscribe(owner, finished_subscription);
-    g_object_unref(other);
+    if (other != nullptr) g_object_unref(other);
     g_object_unref(owner);
     ::close(image_fd);
     return 0;

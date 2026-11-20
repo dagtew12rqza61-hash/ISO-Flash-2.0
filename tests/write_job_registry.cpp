@@ -134,7 +134,12 @@ int main() {
         return 1;
     }
     owner_job_release.set_value();
-    if (registry.reap_terminal() != 1) {
+    std::size_t owner_job_reaped = 0;
+    for (int attempt = 0; attempt < 100 && owner_job_reaped == 0; ++attempt) {
+        owner_job_reaped = registry.reap_terminal();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (owner_job_reaped != 1) {
         std::cerr << "Disconnected caller job was not reaped\\n";
         return 1;
     }
