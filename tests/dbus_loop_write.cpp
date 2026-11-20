@@ -202,8 +202,8 @@ bool cancel_write(GDBusConnection* connection, std::uint64_t job_id,
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
-        std::cerr << "Usage: test_dbus_loop_write IMAGE DEVICE BACKING_FILE DISCONNECT_IMAGE\n";
+    if (argc != 6) {
+        std::cerr << "Usage: test_dbus_loop_write IMAGE DEVICE BACKING_FILE DISCONNECT_IMAGE REMOVE_MARKER\n";
         return 2;
     }
 
@@ -383,6 +383,53 @@ int main(int argc, char** argv) {
         readback.sha256 != image.sha256) {
         std::cerr << "Loop backing-file SHA-256 does not match the source ISO\n";
         return 6;
+    }
+
+    const int removal_image_fd =
+        ::open(argv[4], O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (removal_image_fd < 0) {
+        std::cerr << "Cannot reopen removal-test ISO\n";
+        return 7;
+    }
+    std::uint64_t removal_job_id = 0;
+    if (!start_write(owner, removal_image_fd, device_major, device_minor,
+                     removal_job_id)) {
+        ::close(removal_image_fd);
+        return 7;
+    }
+    const int marker_fd = ::open(
+        argv[5], O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (marker_fd < 0) {
+        ::close(removal_image_fd);
+        std::cerr << "Cannot create device-removal synchronization marker\n";
+        return 7;
+    }
+    ::close(marker_fd);
+
+    FinishedEvent removal_event;
+    const bool removal_finished =
+        wait_for_finished(signals, removal_job_id, removal_event);
+    ::close(removal_image_fd);
+    if (!removal_finished ||
+        removal_event.state != "device-lost" ||
+        removal_event.error_number != ENODEV ||
+        removal_event.completed != 0) {
+        std::cerr << "Detached loop device was not reported as a terminal device-loss event\n";
+        return 7;
+    }
+
+    const int unchanged_backing_fd =
+        ::open(argv[3], O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (unchanged_backing_fd < 0) {
+        return 7;
+    }
+    const auto unchanged_readback = iso_flash::hash_fd_range_sha256(
+        unchanged_backing_fd, image.snapshot.size_bytes, [] { return false; });
+    ::close(unchanged_backing_fd);
+    if (unchanged_readback.status != iso_flash::ImageHashStatus::Completed ||
+        unchanged_readback.sha256 != image.sha256) {
+        std::cerr << "Detached loop device changed the backing image after removal\n";
+        return 7;
     }
 
     std::cout << "Loop-device D-Bus write, owner checks, cancellation, fsync, "

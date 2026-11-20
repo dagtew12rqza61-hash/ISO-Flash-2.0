@@ -134,15 +134,18 @@ jobs:
           image=$(mktemp)
           disconnect_image=$(mktemp)
           backing=$(mktemp)
+          remove_marker=$(mktemp)
           loop_device=''
+          removal_pid=''
           service_pid=''
           rule=/etc/polkit-1/rules.d/00-iso-flash-loop-test.rules
           cleanup() {
+            if [ -n "$removal_pid" ]; then kill "$removal_pid" 2>/dev/null || true; fi
             if [ -n "$service_pid" ]; then sudo kill "$service_pid" 2>/dev/null || true; fi
             if [ -n "$loop_device" ]; then sudo losetup --detach "$loop_device" || true; fi
             sudo rm -f "$rule"
             sudo systemctl restart polkit.service || true
-            rm -f "$image" "$disconnect_image" "$backing"
+            rm -f "$image" "$disconnect_image" "$backing" "$remove_marker"
           }
           trap cleanup EXIT
           timeout 20s sudo systemctl start dbus.service
@@ -172,7 +175,22 @@ jobs:
             cat /tmp/iso-flash-loop-test-service.log || true
             exit 1
           fi
-          build/tests/test_dbus_loop_write "$image" "$loop_device" "$backing" "$disconnect_image"
+          rm -f "$remove_marker"
+          (
+            for attempt in $(seq 1 500); do
+              if [ -e "$remove_marker" ]; then
+                sleep 0.2
+                sudo losetup --detach "$loop_device"
+                exit 0
+              fi
+              sleep 0.01
+            done
+            exit 1
+          ) &
+          removal_pid=$!
+          build/tests/test_dbus_loop_write "$image" "$loop_device" "$backing" "$disconnect_image" "$remove_marker"
+          wait "$removal_pid"
+          removal_pid=''
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
