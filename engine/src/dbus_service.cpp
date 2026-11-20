@@ -1,11 +1,11 @@
 #include "device_guard.hpp"
 #include "device_io.hpp"
 #include "image_fd_validation.hpp"
+#include "image_validation_limiter.hpp"
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
-#include <atomic>
 #include <cstdint>
 #include <new>
 #include <string>
@@ -15,8 +15,7 @@
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
 constexpr const char* kObjectPath = "/org/iso_flash/Manager1";
-constexpr unsigned int kMaxConcurrentImageValidations = 2;
-std::atomic<unsigned int> g_active_image_validations{0};
+iso_flash::ImageValidationLimiter g_image_validation_limiter(2);
 
 constexpr const char* kIntrospectionXml = R"xml(
 <node>
@@ -49,11 +48,8 @@ void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
 
 struct ImageValidationTaskData {
     iso_flash::UniqueFd descriptor;
+    iso_flash::ImageValidationLimiter::Lease capacity_lease;
     iso_flash::ImageFdValidationResult validation;
-
-    ~ImageValidationTaskData() {
-        g_active_image_validations.fetch_sub(1, std::memory_order_acq_rel);
-    }
 };
 
 void image_validation_worker(GTask* task, gpointer, gpointer task_data,
@@ -150,13 +146,8 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
             return;
         }
 
-        unsigned int active = g_active_image_validations.load(std::memory_order_acquire);
-        while (active < kMaxConcurrentImageValidations &&
-               !g_active_image_validations.compare_exchange_weak(
-                   active, active + 1, std::memory_order_acq_rel,
-                   std::memory_order_acquire)) {
-        }
-        if (active >= kMaxConcurrentImageValidations) {
+        auto capacity_lease = g_image_validation_limiter.try_acquire();
+        if (!capacity_lease) {
             (void)::close(received_fd);
             g_dbus_method_invocation_return_value(
                 invocation,
@@ -166,9 +157,8 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
         }
 
         auto* task_data = new (std::nothrow) ImageValidationTaskData{
-            iso_flash::UniqueFd(received_fd), {}};
+            iso_flash::UniqueFd(received_fd), std::move(capacity_lease), {}};
         if (task_data == nullptr) {
-            g_active_image_validations.fetch_sub(1, std::memory_order_acq_rel);
             (void)::close(received_fd);
             g_dbus_method_invocation_return_value(
                 invocation,
