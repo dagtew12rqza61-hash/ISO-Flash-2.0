@@ -381,7 +381,7 @@ void start_write_worker(GTask* task, gpointer, gpointer task_data,
             const iso_flash::WriteWorker::ProgressCallback& progress,
             const iso_flash::WriteWorker::CancelCallback& cancelled) {
 #ifdef ISO_FLASH_TEST_WRITE_DELAY
-            for (int delay_step = 0; delay_step < 10; ++delay_step) {
+            for (int delay_step = 0; delay_step < 50; ++delay_step) {
                 if (cancelled()) {
                     return iso_flash::WriteOperationResult{
                         iso_flash::WriteIoStatus::Cancelled, 0, 0};
