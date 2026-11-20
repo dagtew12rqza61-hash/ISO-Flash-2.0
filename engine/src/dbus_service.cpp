@@ -51,14 +51,47 @@ void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
 struct ImageValidationTaskData {
     iso_flash::UniqueFd descriptor;
     iso_flash::ImageValidationLimiter::Lease capacity_lease;
+    GCancellable* cancellable = nullptr;
+    GDBusConnection* connection = nullptr;
+    guint disconnect_subscription = 0;
     iso_flash::ImageFdValidationResult validation;
+    std::string sender;
+
+    ~ImageValidationTaskData() {
+        if (connection != nullptr && disconnect_subscription != 0) {
+            g_dbus_connection_signal_unsubscribe(connection, disconnect_subscription);
+        }
+        if (connection != nullptr) g_object_unref(connection);
+        if (cancellable != nullptr) g_object_unref(cancellable);
+    }
 };
 
+void sender_owner_changed(GDBusConnection*, const gchar*, const gchar*,
+                          const gchar*, const gchar*, GVariant* parameters,
+                          gpointer user_data) {
+    auto* cancellable = G_CANCELLABLE(user_data);
+    const gchar* name = nullptr;
+    const gchar* old_owner = nullptr;
+    const gchar* new_owner = nullptr;
+    g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
+    if (name != nullptr && old_owner != nullptr && new_owner != nullptr &&
+        old_owner[0] != '\\0' && new_owner[0] == '\\0') {
+        g_cancellable_cancel(cancellable);
+    }
+}
+
 void image_validation_worker(GTask* task, gpointer, gpointer task_data,
-                             GCancellable*) {
+                             GCancellable* cancellable) {
     auto* data = static_cast<ImageValidationTaskData*>(task_data);
     auto outcome = iso_flash::run_image_validation_task(
-        data->descriptor.get(), iso_flash::validate_image_fd);
+        data->descriptor.get(),
+        [cancellable](int fd) {
+            return iso_flash::validate_image_fd(
+                fd, [cancellable] {
+                    return cancellable != nullptr &&
+                           g_cancellable_is_cancelled(cancellable);
+                });
+        });
     if (!outcome.completed) {
         g_task_return_new_error(
             task, G_IO_ERROR, G_IO_ERROR_FAILED, "Image validation failed: %s",
@@ -96,7 +129,7 @@ void image_validation_complete(GObject*, GAsyncResult* async_result,
     g_object_unref(invocation);
 }
 
-void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
+void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
                         const gchar*, const gchar* method_name,
                         GVariant* parameters, GDBusMethodInvocation* invocation,
                         gpointer) {
@@ -166,8 +199,7 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
             return;
         }
 
-        auto* task_data = new (std::nothrow) ImageValidationTaskData{
-            iso_flash::UniqueFd(received_fd), std::move(capacity_lease), {}};
+        auto* task_data = new (std::nothrow) ImageValidationTaskData;
         if (task_data == nullptr) {
             (void)::close(received_fd);
             g_dbus_method_invocation_return_value(
@@ -176,9 +208,23 @@ void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
                               "Cannot allocate image validation task"));
             return;
         }
+        task_data->descriptor.reset(received_fd);
+        task_data->capacity_lease = std::move(capacity_lease);
+        task_data->cancellable = g_cancellable_new();
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        task_data->sender = sender != nullptr ? sender : "";
+        if (!task_data->sender.empty()) {
+            task_data->disconnect_subscription = g_dbus_connection_signal_subscribe(
+                connection, "org.freedesktop.DBus", "org.freedesktop.DBus",
+                "NameOwnerChanged", "/org/freedesktop/DBus",
+                task_data->sender.c_str(), G_DBUS_SIGNAL_FLAGS_NONE,
+                sender_owner_changed, g_object_ref(task_data->cancellable),
+                [](gpointer data) { g_object_unref(data); });
+        }
 
         GTask* task = g_task_new(
-            nullptr, nullptr, image_validation_complete,
+            nullptr, task_data->cancellable, image_validation_complete,
             g_object_ref(invocation));
         g_task_set_task_data(
             task, task_data,
