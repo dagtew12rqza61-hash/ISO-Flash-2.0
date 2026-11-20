@@ -36,10 +36,12 @@ public:
     }
 
     void reset(int fd = -1) noexcept {
-        if (fd_ >= 0) {
-            ::close(fd_);
+        if (fd_ != fd) {
+            if (fd_ >= 0) {
+                ::close(fd_);
+            }
+            fd_ = fd;
         }
-        fd_ = fd;
     }
 
 private:
