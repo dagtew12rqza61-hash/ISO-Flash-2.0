@@ -137,7 +137,7 @@ inline PolkitAuthorizationResult authorize_dbus_sender(
         connection, "org.freedesktop.PolicyKit1",
         "/org/freedesktop/PolicyKit1/Authority",
         "org.freedesktop.PolicyKit1.Authority", "CheckAuthorization",
-        parameters, G_VARIANT_TYPE("((bba{ss}))"),
+        parameters, nullptr,
         G_DBUS_CALL_FLAGS_NONE, 120000, cancellable, &error);
     if (reply == nullptr) {
         result.reason = error != nullptr ? error->message :
@@ -147,12 +147,18 @@ inline PolkitAuthorizationResult authorize_dbus_sender(
     }
 
     GVariant* authorization_result = nullptr;
-    g_variant_get(reply, "(@(bba{ss}))", &authorization_result);
-    g_variant_unref(reply);
-    if (authorization_result == nullptr) {
-        result.reason = "Polkit returned an empty authorization result";
+    if (g_variant_is_of_type(reply, G_VARIANT_TYPE("(bba{ss})"))) {
+        authorization_result = g_variant_ref(reply);
+    } else if (g_variant_is_of_type(
+                   reply, G_VARIANT_TYPE("((bba{ss}))"))) {
+        g_variant_get(reply, "(@(bba{ss}))", &authorization_result);
+    } else {
+        result.reason = std::string("Polkit returned an unexpected CheckAuthorization signature: ") +
+            g_variant_get_type_string(reply);
+        g_variant_unref(reply);
         return result;
     }
+    g_variant_unref(reply);
 
     gboolean authorized = FALSE;
     gboolean challenge = FALSE;
