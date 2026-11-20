@@ -21,3 +21,8 @@ add_executable(block_topology_test block_topology.cpp)
 target_include_directories(block_topology_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(block_topology_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME block_topology_detects_backing_and_fails_closed COMMAND block_topology_test)
+
+add_executable(device_snapshot_test device_snapshot.cpp)
+target_include_directories(device_snapshot_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(device_snapshot_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME device_snapshot_rejects_replacement_and_capacity_changes COMMAND device_snapshot_test)
