@@ -33,7 +33,7 @@ iso_flash::WriteJob make_job(std::uint64_t id) {
 std::unique_ptr<iso_flash::WriteWorker> make_worker(std::uint64_t id) {
     return std::make_unique<iso_flash::WriteWorker>(
         make_job(id), 8,
-        [](iso_flash::WriteJob&) { return 0; },
+        [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
         [](iso_flash::WriteJob&,
            const iso_flash::WriteWorker::ProgressCallback& progress,
            const iso_flash::WriteWorker::CancelCallback&) {
@@ -82,7 +82,7 @@ int main() {
     const auto release_signal = release_operation.get_future().share();
     auto cancellable = std::make_unique<iso_flash::WriteWorker>(
         make_job(42), 8,
-        [](iso_flash::WriteJob&) { return 0; },
+        [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
         [&operation_entered, release_signal](
             iso_flash::WriteJob&,
             const iso_flash::WriteWorker::ProgressCallback&,
