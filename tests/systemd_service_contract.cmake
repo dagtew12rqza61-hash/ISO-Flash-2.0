@@ -19,3 +19,16 @@ string(FIND "${SERVICE_CONTENT}" "ProcSubset=pid" PROC_SUBSET_POSITION)
 if(NOT PROC_SUBSET_POSITION EQUAL -1)
   message(FATAL_ERROR "ProcSubset=pid hides /proc/swaps required by DeviceGuard")
 endif()
+
+foreach(REQUIRED_DIRECTIVE
+    "RestrictNamespaces=true"
+    "RestrictRealtime=true"
+    "SystemCallArchitectures=native"
+    "UMask=0077"
+    "KeyringMode=private"
+    "RemoveIPC=true")
+  string(FIND "${SERVICE_CONTENT}" "${REQUIRED_DIRECTIVE}" POSITION)
+  if(POSITION EQUAL -1)
+    message(FATAL_ERROR "Required service sandbox directive missing: ${REQUIRED_DIRECTIVE}")
+  endif()
+endforeach()
