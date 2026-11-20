@@ -5,12 +5,14 @@ endif()
 file(READ "${SERVICE_SOURCE}" service_source)
 string(REGEX MATCHALL "<method name=\"[A-Za-z0-9_]+\"" methods "${service_source}")
 list(LENGTH methods method_count)
-if(NOT method_count EQUAL 2)
-  message(FATAL_ERROR "The privileged D-Bus service must expose exactly two read-only methods")
+if(NOT method_count EQUAL 3)
+  message(FATAL_ERROR "The service must expose two read-only methods and one Polkit authorization method")
 endif()
 
-if(NOT "${methods}" MATCHES "InspectTarget" OR NOT "${methods}" MATCHES "ValidateImage")
-  message(FATAL_ERROR "Only InspectTarget and ValidateImage may be exported")
+if(NOT "${methods}" MATCHES "InspectTarget" OR
+   NOT "${methods}" MATCHES "ValidateImage" OR
+   NOT "${methods}" MATCHES "CheckWriteAuthorization")
+  message(FATAL_ERROR "Unexpected D-Bus inspection or authorization interface")
 endif()
 
 if(NOT service_source MATCHES "inspect_target_read_only" OR
@@ -68,4 +70,19 @@ if(NOT caller_watch_source MATCHES "NameOwnerChanged" OR
    NOT caller_watch_source MATCHES "g_cancellable_cancel" OR
    NOT caller_watch_source MATCHES "g_dbus_connection_signal_subscribe")
   message(FATAL_ERROR "Caller disconnect watcher must subscribe to NameOwnerChanged and cancel its task")
+endif()
+
+if(NOT DEFINED POLKIT_HEADER OR NOT EXISTS "${POLKIT_HEADER}")
+  message(FATAL_ERROR "D-Bus caller and Polkit authorization helper is missing")
+endif()
+file(READ "${POLKIT_HEADER}" polkit_source)
+if(NOT service_source MATCHES "authorize_dbus_sender" OR
+   NOT service_source MATCHES "subscribe_to_caller_disconnect" OR
+   NOT polkit_source MATCHES "GetConnectionUnixProcessID" OR
+   NOT polkit_source MATCHES "GetConnectionUnixUser" OR
+   NOT polkit_source MATCHES "process_start_ticks" OR
+   NOT polkit_source MATCHES "CheckAuthorization" OR
+   NOT polkit_source MATCHES "system-bus-name" OR
+   NOT polkit_source MATCHES "org.iso_flash.write")
+  message(FATAL_ERROR "Polkit must authorize the unique D-Bus sender after binding UID, PID and process start time")
 endif()
