@@ -14,9 +14,9 @@ The service never accepts an arbitrary device path from the caller.
 `ValidateImage` receives an already-open file descriptor through D-Bus Unix-FD
 passing. It duplicates the received descriptor into service-owned RAII
 ownership, requires the descriptor access mode to be read-only, verifies that
-it refers to a nonempty regular file, and computes SHA-256 through bounded
-positional reads. No caller-supplied path is opened. The method does not write
-to the image or any target device.
+it refers to a nonempty regular file, and computes SHA-256 through bounded positional reads on a GLib worker thread,
+keeping the D-Bus main loop responsive. No caller-supplied path is opened.
+The method does not write to the image or any target device.
 
 The service runs as root because device-node access and complete system
 metadata inspection must be consistent across desktop sessions. Its systemd
