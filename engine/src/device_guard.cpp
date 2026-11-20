@@ -151,6 +151,7 @@ bool validate_target(const std::string& device, std::string& error) {
         return false;
     }
     for (const auto& dev : mounted_devices) {
+        if (dev.rfind("0:", 0) == 0) continue;
         std::error_code mount_ec;
         const fs::path mounted = fs::canonical(fs::path("/sys/dev/block") / dev, mount_ec);
         if (mount_ec) {
@@ -174,6 +175,7 @@ bool validate_target(const std::string& device, std::string& error) {
         error = "Cannot inspect active swap devices";
         return false;
     }
+    std::string line;
     std::getline(swaps, line);
     while (std::getline(swaps, line)) {
         const auto end = line.find(' ');
