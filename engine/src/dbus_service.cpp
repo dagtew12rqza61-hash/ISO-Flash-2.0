@@ -1,15 +1,17 @@
 #include "device_guard.hpp"
+#include "device_io.hpp"
+#include "image_fd_validation.hpp"
 
 #include <gio/gio.h>
+#include <gio/gunixfdlist.h>
 
-#include <exception>
+#include <cstdint>
 #include <string>
 #include <sys/sysmacros.h>
 
 namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
 constexpr const char* kObjectPath = "/org/iso_flash/Manager1";
-constexpr const char* kInterfaceName = "org.iso_flash.Manager1";
 
 constexpr const char* kIntrospectionXml = R"xml(
 <node>
@@ -21,52 +23,99 @@ constexpr const char* kIntrospectionXml = R"xml(
       <arg name="capacity_bytes" type="t" direction="out"/>
       <arg name="reason" type="s" direction="out"/>
     </method>
+    <method name="ValidateImage">
+      <arg name="image_fd" type="h" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="size_bytes" type="t" direction="out"/>
+      <arg name="sha256" type="s" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
   </interface>
 </node>
 )xml";
+
+void return_inspection(GDBusMethodInvocation* invocation, bool accepted,
+                       std::uint64_t capacity, const std::string& reason) {
+    g_dbus_method_invocation_return_value(
+        invocation,
+        g_variant_new("(bts)", accepted, static_cast<guint64>(capacity),
+                      reason.c_str()));
+}
 
 void handle_method_call(GDBusConnection*, const gchar*, const gchar*,
                         const gchar*, const gchar* method_name,
                         GVariant* parameters, GDBusMethodInvocation* invocation,
                         gpointer) {
-    if (g_strcmp0(method_name, "InspectTarget") != 0) {
-        g_dbus_method_invocation_return_error(
-            invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
-            "Method is not implemented");
+    if (g_strcmp0(method_name, "InspectTarget") == 0) {
+        guint32 device_major = 0;
+        guint32 device_minor = 0;
+        g_variant_get(parameters, "(uu)", &device_major, &device_minor);
+
+        if (device_major == 0) {
+            return_inspection(invocation, false, 0,
+                              "Invalid block-device major number");
+            return;
+        }
+
+        const dev_t expected = makedev(device_major, device_minor);
+        if (major(expected) != device_major || minor(expected) != device_minor) {
+            return_inspection(invocation, false, 0,
+                              "Block-device major/minor is out of range");
+            return;
+        }
+
+        const std::string device = "/dev/block/" +
+            std::to_string(device_major) + ":" + std::to_string(device_minor);
+        std::string error;
+        std::uint64_t capacity = 0;
+        const bool accepted =
+            inspect_target_read_only(device, error, capacity, expected);
+        return_inspection(invocation, accepted, capacity,
+                          accepted ? std::string{} : error);
         return;
     }
 
-    guint32 device_major = 0;
-    guint32 device_minor = 0;
-    g_variant_get(parameters, "(uu)", &device_major, &device_minor);
+    if (g_strcmp0(method_name, "ValidateImage") == 0) {
+        gint32 handle = -1;
+        g_variant_get(parameters, "(h)", &handle);
+        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
+        GUnixFDList* fd_list =
+            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
+        if (fd_list == nullptr) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0), "",
+                              "D-Bus request did not include a Unix file descriptor list"));
+            return;
+        }
 
-    if (device_major == 0) {
+        GError* error = nullptr;
+        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
+        if (received_fd < 0) {
+            const std::string reason = error != nullptr
+                ? error->message : "Cannot receive image file descriptor";
+            if (error != nullptr) g_error_free(error);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0), "",
+                              reason.c_str()));
+            return;
+        }
+
+        const iso_flash::UniqueFd owned_fd(received_fd);
+        const auto validation = iso_flash::validate_image_fd(owned_fd.get());
         g_dbus_method_invocation_return_value(
-            invocation, g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                                      "Invalid block-device major number"));
+            invocation,
+            g_variant_new("(bts)", validation.valid,
+                          static_cast<guint64>(validation.bytes_hashed),
+                          validation.sha256.c_str(),
+                          validation.valid ? "" : validation.reason.c_str()));
         return;
     }
 
-    const std::string device = "/dev/block/" + std::to_string(device_major) +
-                               ":" + std::to_string(device_minor);
-    std::string error;
-    std::uint64_t capacity_bytes = 0;
-    const dev_t expected_device_number = makedev(device_major, device_minor);
-    if (major(expected_device_number) != device_major ||
-        minor(expected_device_number) != device_minor) {
-        g_dbus_method_invocation_return_value(
-            invocation, g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                                      "Block-device major/minor is out of range"));
-        return;
-    }
-    const bool accepted =
-        inspect_target_read_only(device, error, capacity_bytes, expected_device_number);
-
-    g_dbus_method_invocation_return_value(
-        invocation,
-        g_variant_new("(bts)", accepted,
-                      static_cast<guint64>(capacity_bytes),
-                      accepted ? "" : error.c_str()));
+    g_dbus_method_invocation_return_error(
+        invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+        "Method is not implemented");
 }
 
 const GDBusInterfaceVTable kVTable = {
