@@ -29,6 +29,11 @@ target_include_directories(device_snapshot_test PRIVATE ${CMAKE_SOURCE_DIR}/engi
 target_compile_options(device_snapshot_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 add_test(NAME device_snapshot_rejects_replacement_and_capacity_changes COMMAND device_snapshot_test)
 
+add_executable(image_source_test image_source.cpp)
+target_include_directories(image_source_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
+target_compile_options(image_source_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_test(NAME image_source_rejects_invalid_or_changed_iso_descriptors COMMAND image_source_test)
+
 add_executable(device_io_test device_io.cpp)
 target_include_directories(device_io_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/src)
 target_compile_options(device_io_test PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
