@@ -8,6 +8,7 @@
 #include <QDBusUnixFileDescriptor>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMainWindow>
@@ -19,6 +20,7 @@
 #include <QVBoxLayout>
 
 #include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -35,6 +37,21 @@ class Window final : public QMainWindow {
     QPushButton* cancelButton{};
     QString imagePath;
     qulonglong activeJob = 0;
+
+    struct ProgressEvent {
+        QString state;
+        qulonglong completed = 0;
+        qulonglong total = 0;
+    };
+    struct FinishedEvent {
+        QString state;
+        qulonglong completed = 0;
+        qulonglong total = 0;
+        int errorNumber = 0;
+        QString message;
+    };
+    QHash<qulonglong, ProgressEvent> pendingProgress;
+    QHash<qulonglong, FinishedEvent> pendingFinished;
 
     static constexpr const char* serviceName = "org.iso_flash.Manager1";
     static constexpr const char* objectPath = "/org/iso_flash/Manager1";
@@ -197,6 +214,15 @@ class Window final : public QMainWindow {
                 progress->setValue(0);
                 statusLabel->setText(
                     QString("Задача %1: запись запущена").arg(activeJob));
+                if (pendingProgress.contains(activeJob)) {
+                    const ProgressEvent event = pendingProgress.take(activeJob);
+                    onProgress(activeJob, event.state, event.completed, event.total);
+                }
+                if (pendingFinished.contains(activeJob)) {
+                    const FinishedEvent event = pendingFinished.take(activeJob);
+                    onFinished(activeJob, event.state, event.completed,
+                               event.total, event.errorNumber, event.message);
+                }
             }
             finished->deleteLater();
             update_write_enabled();
@@ -235,6 +261,9 @@ private slots:
     void onProgress(qulonglong jobId, const QString& state,
                     qulonglong completed, qulonglong total) {
         if (jobId != activeJob) {
+            if (activeJob == 0) {
+                pendingProgress.insert(jobId, {state, completed, total});
+            }
             return;
         }
         const int percent = total == 0 ? 0 : static_cast<int>(
@@ -252,9 +281,15 @@ private slots:
                     qulonglong completed, qulonglong total,
                     int errorNumber, const QString& message) {
         if (jobId != activeJob) {
+            if (activeJob == 0) {
+                pendingFinished.insert(
+                    jobId, {state, completed, total, errorNumber, message});
+            }
             return;
         }
         activeJob = 0;
+        pendingProgress.remove(jobId);
+        pendingFinished.remove(jobId);
         progress->setValue(state == "completed" ? 100 : progress->value());
         statusLabel->setText(
             QString("%1 — %2 / %3 MiB. %4")
