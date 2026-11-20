@@ -48,3 +48,9 @@ The engine now contains a pure, header-only state transition model in `engine/sr
 This model is unit-tested, but it is not yet an asynchronous job manager, does not own descriptors, and is not exposed over D-Bus. No physical write operation is enabled. A cancelled or device-lost job must explicitly report possible partial target contents; cancellation is not an undo operation.
 
 The header-only `WriteJob` model in `engine/src/write_job.hpp` now owns the image and target descriptors through `UniqueFd` for the lifetime of the job object. It is move-only, exposes descriptor values without reopening paths, and has a unit test for ownership transfer and deterministic close on destruction. This is an ownership primitive only: it does not open devices, schedule work, or perform writes.
+
+## Write I/O primitive (implemented, not connected to a device writer)
+
+The header-only `engine/src/write_io.hpp` provides an injectable bounded write loop. It handles short writes, retries `EINTR`, stops when cancellation is requested between in-flight write calls, rejects zero-progress writes, preserves the underlying error code, and rejects negative or overflowing offsets. Its tests inject every I/O outcome and use in-memory callbacks; they do not open or write to block devices. A cancelled or failed result includes the number of bytes already transferred so the caller can report possible partial target contents.
+
+This helper is not called by the current CLI, D-Bus service, or GUI. It does not make physical writing available.
