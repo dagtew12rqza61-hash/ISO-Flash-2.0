@@ -160,8 +160,8 @@ void authority_thread() {
     g_loop = g_main_loop_new(context, FALSE);
     guint owner = g_bus_own_name_on_connection(
         connection, "org.freedesktop.PolicyKit1",
-        G_BUS_NAME_OWNER_FLAGS_NONE, nullptr, authority_name_acquired,
-        authority_name_lost, nullptr);
+        G_BUS_NAME_OWNER_FLAGS_NONE, authority_name_acquired,
+        authority_name_lost, nullptr, nullptr);
     g_main_loop_run(g_loop);
     g_bus_unown_name(owner);
     g_dbus_connection_unregister_object(connection, registration);
