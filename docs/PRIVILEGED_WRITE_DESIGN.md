@@ -27,7 +27,7 @@ The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.
 - Verify the device is removable USB mass storage using sysfs transport ancestry, not a substring match alone.
 - Compare capacity, read-only state, major/minor identity, and sysfs canonical path before and after opening.
 - Re-check mounts, swap, holders, and topology immediately before the first write.
-- Validate the image descriptor as a regular file, capture its size, hash it, and reject an empty or changing source.
+- Validate the image descriptor as a regular file, capture its device/inode/size/mtime/ctime snapshot, hash it, and reject an empty or changing source. The initial read-only descriptor validation and metadata recheck helper are implemented; hashing and integration into the privileged write protocol remain incomplete.
 - Use bounded write loops, handle short writes and EINTR, sync at defined checkpoints, and verify read-back data.
 - Treat ENODEV/ENXIO during open, fstat, ioctl, write, or sync as a terminal device-loss event; stop scheduling writes, never retry against a newly resolved pathname, preserve the original descriptor identity in the job result, and report that the target may contain a partially written image.
 - Keep all destructive operations in the service; expose only typed D-Bus methods and progress signals.
@@ -65,3 +65,8 @@ This worker and registry are not called by the current CLI, D-Bus service, or GU
 ## Asynchronous job registry (implemented, not exposed to D-Bus)
 
 The header-only `WriteJobRegistry` in `engine/src/write_job_registry.hpp` owns workers by stable nonzero job ID. It rejects duplicate IDs and admission after shutdown, provides synchronized snapshot lookup and cancellation forwarding, removes terminal jobs only after moving ownership out from under its mutex, and cancels/joins all remaining workers during shutdown. Worker threads are joined without holding the registry lock, preventing shutdown or reaping from blocking registry lookups while a worker exits. Unit tests use pipe descriptors and injected callbacks only. The registry is not connected to D-Bus, the GUI, Polkit, or any physical write operation; `--write` remains disabled.
+
+
+## ISO source descriptor validation (implemented, not connected to writing)
+
+`engine/src/image_source.hpp` provides read-only ISO descriptor validation. It opens with `O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK`, retries interrupted opens and `fstat`, requires a non-empty regular file, and captures device number, inode, size, modification time, and change time. A later descriptor snapshot can be compared to detect source replacement or metadata-visible mutation. The tests cover valid files, empty files, non-regular descriptors, symlink rejection, EINTR retry, and source mutation. This helper does not hash the ISO, freeze the source, or participate in any write request; physical writing remains disabled.
