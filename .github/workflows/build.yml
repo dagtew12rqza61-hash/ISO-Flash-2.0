@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf pkg-engine pkg-app dist
-          mkdir -p pkg-engine/DEBIAN pkg-app/DEBIAN dist
+          mkdir -p pkg-engine/DEBIAN pkg-engine/usr/lib/iso-flash pkg-app/DEBIAN pkg-app/usr/bin pkg-app/usr/share/applications dist
           install -m 0755 build/engine/iso-flash-write pkg-engine/usr/lib/iso-flash/iso-flash-write
           install -m 0644 packaging/engine/control pkg-engine/DEBIAN/control
           install -m 0644 packaging/application/control pkg-app/DEBIAN/control
