@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <new>
 #include <string>
@@ -303,6 +304,13 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
     }
 
     if (g_strcmp0(method_name, "StartWrite") == 0) {
+#ifndef ISO_FLASH_ENABLE_WRITES
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                          "WRITE_DISABLED: write path is not enabled in this build"));
+        return;
+#endif
         gint32 handle = -1;
         guint32 device_major = 0;
         guint32 device_minor = 0;
@@ -774,41 +782,26 @@ gboolean publish_write_job_updates(gpointer user_data) {
                     &error);
                 if (error != nullptr) g_error_free(error);
             }
-        } else if (changed) {
-            GError* error = nullptr;
-            (void)g_dbus_connection_emit_signal(
-                connection, job.owner.c_str(), kObjectPath,
-                "org.iso_flash.Manager1", "Progress",
-                g_variant_new("(tstt)",
-                    static_cast<guint64>(job.id),
-                    write_state_name(job.snapshot.state),
-                    static_cast<guint64>(job.snapshot.completed_bytes),
-                    static_cast<guint64>(job.snapshot.total_bytes)),
-                &error);
-            if (error != nullptr) g_error_free(error);
+            g_last_emitted.erase(job.id);
+        } else {
+            if (changed) {
+                GError* error = nullptr;
+                (void)g_dbus_connection_emit_signal(
+                    connection, job.owner.c_str(), kObjectPath,
+                    "org.iso_flash.Manager1", "Progress",
+                    g_variant_new("(tstt)",
+                        static_cast<guint64>(job.id),
+                        write_state_name(job.snapshot.state),
+                        static_cast<guint64>(job.snapshot.completed_bytes),
+                        static_cast<guint64>(job.snapshot.total_bytes)),
+                    &error);
+                if (error != nullptr) g_error_free(error);
+            }
+            g_last_emitted[job.id] = job.snapshot;
         }
-        g_last_emitted[job.id] = job.snapshot;
     }
 
     (void)g_write_jobs.reap_terminal();
-    for (auto it = g_last_emitted.begin(); it != g_last_emitted.end();) {
-        if (!g_write_jobs.snapshot("", it->first).has_value()) {
-            bool still_present = false;
-            for (const auto& job : jobs) {
-                if (job.id == it->first) {
-                    still_present = true;
-                    break;
-                }
-            }
-            if (still_present) {
-                it = g_last_emitted.erase(it);
-            } else {
-                ++it;
-            }
-        } else {
-            ++it;
-        }
-    }
     return G_SOURCE_CONTINUE;
 }
 
@@ -896,7 +889,7 @@ int main() {
     }
 
     const guint update_timer = g_timeout_add(
-        100, publish_write_job_updates, g_object_ref(connection));
+        100, publish_write_job_updates, connection);
     GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
     g_main_loop_run(loop);
 
