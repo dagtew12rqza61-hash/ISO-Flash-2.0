@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <vector>
 
 int main() {
     if (!iso_flash::valid_kernel_device_node_basename("sda") ||
@@ -13,7 +14,7 @@ int main() {
         return 1;
     }
 
-    for (const std::string invalid : {
+    for (const std::string& invalid : std::vector<std::string>{
              "", ".", "..", "../sda", "sda/1", "/dev/sda", "sda\n",
              "sda name", "sda;touch", std::string({'s', 'd', 'a', '\0', 'e', 'v', 'i', 'l'})}) {
         if (iso_flash::valid_kernel_device_node_basename(invalid)) {
