@@ -97,7 +97,7 @@ void authorization_complete(GObject*, GAsyncResult* async_result,
             "Polkit authorization task failed";
         if (error != nullptr) g_error_free(error);
         g_dbus_method_invocation_return_value(
-            invocation, g_variant_new("(b uut s)", FALSE, 0U, 0U,
+            invocation, g_variant_new("(buuts)", FALSE, 0U, 0U,
                                       static_cast<guint64>(0), reason.c_str()));
     } else {
         const auto& caller = data->result.caller;
