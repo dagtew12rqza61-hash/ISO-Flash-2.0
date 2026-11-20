@@ -34,6 +34,7 @@ set(ISO_FLASH_TESTS
   write_job_state
   write_progress
   write_worker
+  writable_target
 )
 
 foreach(test_name IN LISTS ISO_FLASH_TESTS)
