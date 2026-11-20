@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install build dependencies
-        run: sudo apt-get -o Acquire::Retries=2 update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev dpkg-dev
+        run: sudo apt-get -o Acquire::Retries=2 update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config libglib2.0-dev qt6-base-dev dpkg-dev dbus-daemon libglib2.0-bin
       - name: Configure and build
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel "$(nproc)"
       - name: Run safety regression tests
@@ -52,6 +52,34 @@ jobs:
           status=$?
           set -e
           test "$status" -eq 3
+      - name: Exercise read-only D-Bus inspection API
+        run: |
+          set -euo pipefail
+          bus_info=$(dbus-daemon --session --fork --print-address=1 --print-pid=1)
+          bus_address=$(printf '%s\\n' "$bus_info" | sed -n '1p')
+          bus_pid=$(printf '%s\\n' "$bus_info" | sed -n '2p')
+          service_pid=''
+          cleanup() {
+            if [ -n "$service_pid" ]; then kill "$service_pid" 2>/dev/null || true; fi
+            kill "$bus_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          export DBUS_SYSTEM_BUS_ADDRESS="$bus_address"
+          /usr/lib/iso-flash/iso-flash-service &
+          service_pid=$!
+          ready=0
+          for attempt in $(seq 1 50); do
+            if gdbus introspect --system --dest org.iso_flash.Manager1 --object-path /org/iso_flash/Manager1 >/tmp/iso-flash-dbus-introspection.txt 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.1
+          done
+          test "$ready" -eq 1
+          grep -q 'InspectTarget' /tmp/iso-flash-dbus-introspection.txt
+          reply=$(gdbus call --system --dest org.iso_flash.Manager1 --object-path /org/iso_flash/Manager1 --method org.iso_flash.Manager1.InspectTarget 1 3)
+          printf '%s\\n' "$reply"
+          printf '%s' "$reply" | grep -q 'false'
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
