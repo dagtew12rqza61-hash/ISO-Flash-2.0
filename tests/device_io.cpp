@@ -11,8 +11,10 @@ int main() {
     std::string error;
     int opened_fd = 123;
     int observed_flags = 0;
+    int open_attempts = 0;
     std::string observed_path;
     const auto denied_open = [&](const char* path, int flags) {
+        ++open_attempts;
         observed_path = path;
         observed_flags = flags;
         errno = EACCES;
@@ -20,11 +22,12 @@ int main() {
     };
 
     if (iso_flash::open_target_read_only("/dev/test-device", opened_fd, error, denied_open) ||
-        opened_fd != -1 || error.empty() || observed_path != "/dev/test-device" ||
+        opened_fd != -1 || error.find("permission denied") == std::string::npos ||
+        open_attempts != 1 || observed_path != "/dev/test-device" ||
         (observed_flags & O_ACCMODE) != O_RDONLY ||
         (observed_flags & O_CLOEXEC) == 0 ||
         (observed_flags & O_NONBLOCK) == 0) {
-        std::cerr << "Read-only open failure was not handled correctly\n";
+        std::cerr << "Read-only open failure was not handled correctly: " << error << '\n';
         return 1;
     }
 
@@ -35,8 +38,26 @@ int main() {
     };
     if (iso_flash::open_target_read_only("/dev/disconnected", opened_fd, error,
                                          disconnected_open) ||
-        opened_fd != -1 || error.empty()) {
-        std::cerr << "Disconnected target open was not rejected\n";
+        opened_fd != -1 ||
+        error.find("disconnected or is no longer available") == std::string::npos) {
+        std::cerr << "Disconnected target open was not diagnosed: " << error << '\n';
+        return 1;
+    }
+
+    error.clear();
+    open_attempts = 0;
+    const auto interrupted_open = [&](const char*, int) {
+        ++open_attempts;
+        if (open_attempts == 1) {
+            errno = EINTR;
+            return -1;
+        }
+        return 42;
+    };
+    if (!iso_flash::open_target_read_only("/dev/retry-device", opened_fd, error,
+                                          interrupted_open) ||
+        opened_fd != 42 || open_attempts != 2) {
+        std::cerr << "Interrupted open was not retried safely: " << error << '\n';
         return 1;
     }
 
