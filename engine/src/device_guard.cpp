@@ -157,9 +157,17 @@ bool validate_target(const std::string& device, std::string& error) {
         const std::string dev = first.substr(b + 1, c - b - 1);
         std::error_code mount_ec;
         const fs::path mounted = fs::canonical(fs::path("/sys/dev/block") / dev, mount_ec);
-        if (!mount_ec && inside(mounted, real)) {
-            error = "Target contains a mounted filesystem";
-            return false;
+        if (!mount_ec) {
+            bool topology_verified = true;
+            std::set<std::string> visited;
+            if (depends_on(mounted, real, topology_verified, visited)) {
+                error = "Target or one of its backing devices contains a mounted filesystem";
+                return false;
+            }
+            if (!topology_verified) {
+                error = "Cannot verify mounted block-device dependencies";
+                return false;
+            }
         }
     }
 
@@ -176,9 +184,17 @@ bool validate_target(const std::string& device, std::string& error) {
         if (::stat(name.c_str(), &sw) == 0 && S_ISBLK(sw.st_mode)) {
             std::error_code swap_ec;
             const fs::path swap_dev = sys_device(sw.st_rdev, swap_ec);
-            if (!swap_ec && inside(swap_dev, real)) {
-                error = "Target is used for swap";
-                return false;
+            if (!swap_ec) {
+                bool topology_verified = true;
+                std::set<std::string> visited;
+                if (depends_on(swap_dev, real, topology_verified, visited)) {
+                    error = "Target or one of its backing devices is used for swap";
+                    return false;
+                }
+                if (!topology_verified) {
+                    error = "Cannot verify active swap device dependencies";
+                    return false;
+                }
             }
         }
     }
