@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node>
+  <interface name="org.iso_flash.Manager1">
+    <method name="InspectTarget">
+      <arg name="major" type="u" direction="in"/>
+      <arg name="minor" type="u" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="capacity_bytes" type="t" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
+    <method name="StartWrite">
+      <arg name="image_fd" type="h" direction="in"/>
+      <arg name="major" type="u" direction="in"/>
+      <arg name="minor" type="u" direction="in"/>
+      <arg name="job_id" type="s" direction="out"/>
+    </method>
+    <method name="CancelWrite">
+      <arg name="job_id" type="s" direction="in"/>
+    </method>
+    <signal name="Progress">
+      <arg name="job_id" type="s"/>
+      <arg name="bytes_written" type="t"/>
+      <arg name="total_bytes" type="t"/>
+    </signal>
+    <signal name="Finished">
+      <arg name="job_id" type="s"/>
+      <arg name="success" type="b"/>
+      <arg name="code" type="s"/>
+      <arg name="message" type="s"/>
+    </signal>
+  </interface>
+</node>
