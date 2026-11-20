@@ -26,10 +26,17 @@ if(NOT service_source MATCHES "g_task_run_in_thread")
   message(FATAL_ERROR "ValidateImage must hash asynchronously outside the D-Bus main loop")
 endif()
 
-if(NOT service_source MATCHES "kMaxConcurrentImageValidations" OR
-   NOT service_source MATCHES "compare_exchange_weak" OR
-   NOT service_source MATCHES "fetch_sub")
-  message(FATAL_ERROR "D-Bus image validation must have a bounded concurrent-task limit")
+if(NOT DEFINED LIMITER_HEADER OR NOT EXISTS "${LIMITER_HEADER}")
+  message(FATAL_ERROR "Image validation limiter header is missing")
+endif()
+file(READ "${LIMITER_HEADER}" limiter_source)
+if(NOT service_source MATCHES "ImageValidationLimiter" OR
+   NOT service_source MATCHES "try_acquire" OR
+   NOT service_source MATCHES "ImageValidationLimiter::Lease" OR
+   NOT limiter_source MATCHES "compare_exchange_weak" OR
+   NOT limiter_source MATCHES "fetch_sub" OR
+   NOT limiter_source MATCHES "~Lease")
+  message(FATAL_ERROR "D-Bus image validation must use the tested RAII concurrency limiter")
 endif()
 
 if(NOT service_source MATCHES "g_unix_fd_list_get")
