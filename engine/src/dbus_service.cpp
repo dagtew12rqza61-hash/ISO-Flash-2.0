@@ -219,298 +219,6 @@ void image_validation_complete(GObject*, GAsyncResult* async_result,
     g_object_unref(invocation);
 }
 
-void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
-                        const gchar*, const gchar* method_name,
-                        GVariant* parameters, GDBusMethodInvocation* invocation,
-                        gpointer) {
-    if (g_strcmp0(method_name, "InspectTarget") == 0) {
-        guint32 device_major = 0;
-        guint32 device_minor = 0;
-        g_variant_get(parameters, "(uu)", &device_major, &device_minor);
-
-        if (device_major == 0) {
-            return_inspection(invocation, false, 0,
-                              "Invalid block-device major number");
-            return;
-        }
-
-        const dev_t expected = makedev(device_major, device_minor);
-        if (major(expected) != device_major || minor(expected) != device_minor) {
-            return_inspection(invocation, false, 0,
-                              "Block-device major/minor is out of range");
-            return;
-        }
-
-        const std::string device = "/dev/block/" +
-            std::to_string(device_major) + ":" + std::to_string(device_minor);
-        std::string error;
-        std::uint64_t capacity = 0;
-        const bool accepted =
-            inspect_target_read_only(device, error, capacity, expected);
-        return_inspection(invocation, accepted, capacity,
-                          accepted ? std::string{} : error);
-        return;
-    }
-
-    if (g_strcmp0(method_name, "CheckWriteAuthorization") == 0) {
-        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
-        auto* task_data = new (std::nothrow) AuthorizationTaskData;
-        if (task_data == nullptr || sender == nullptr || sender[0] != ':') {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(buuts)", FALSE, 0U, 0U,
-                              static_cast<guint64>(0),
-                              "Cannot identify D-Bus caller"));
-            return;
-        }
-        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
-        task_data->cancellable = g_cancellable_new();
-        task_data->sender = sender;
-        task_data->disconnect_subscription =
-            iso_flash::subscribe_to_caller_disconnect(
-                connection, task_data->sender.c_str(), task_data->cancellable);
-        if (task_data->disconnect_subscription == 0) {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(buuts)", FALSE, 0U, 0U,
-                              static_cast<guint64>(0),
-                              "Cannot monitor D-Bus caller disconnect"));
-            return;
-        }
-        GTask* task = g_task_new(
-            nullptr, task_data->cancellable, authorization_complete,
-            g_object_ref(invocation));
-        g_task_set_task_data(
-            task, task_data,
-            [](gpointer data) { delete static_cast<AuthorizationTaskData*>(data); });
-        g_task_run_in_thread(task, authorization_worker);
-        g_object_unref(task);
-        return;
-    }
-
-    if (g_strcmp0(method_name, "CancelWrite") == 0) {
-        guint64 job_id = 0;
-        g_variant_get(parameters, "(t)", &job_id);
-        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
-        const bool cancelled = sender != nullptr &&
-            g_write_jobs.cancel(sender, static_cast<std::uint64_t>(job_id));
-        g_dbus_method_invocation_return_value(
-            invocation,
-            g_variant_new("(bs)", cancelled,
-                cancelled ? "" : "Unknown job or caller does not own this job"));
-        return;
-    }
-
-    if (g_strcmp0(method_name, "StartWrite") == 0) {
-#ifndef ISO_FLASH_ENABLE_WRITES
-        g_dbus_method_invocation_return_value(
-            invocation,
-            g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                          "WRITE_DISABLED: write path is not enabled in this build"));
-        return;
-#endif
-        gint32 handle = -1;
-        guint32 device_major = 0;
-        guint32 device_minor = 0;
-        g_variant_get(parameters, "(huu)", &handle,
-                      &device_major, &device_minor);
-        if (device_major == 0) {
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Invalid block-device major number"));
-            return;
-        }
-        const dev_t expected_device = makedev(device_major, device_minor);
-        if (major(expected_device) != device_major ||
-            minor(expected_device) != device_minor) {
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Block-device major/minor is out of range"));
-            return;
-        }
-
-        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
-        GUnixFDList* fd_list =
-            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
-        if (fd_list == nullptr) {
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "D-Bus request did not include a Unix file descriptor list"));
-            return;
-        }
-
-        GError* error = nullptr;
-        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
-        if (received_fd < 0) {
-            const std::string reason = error != nullptr
-                ? error->message : "Cannot receive ISO file descriptor";
-            if (error != nullptr) g_error_free(error);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              reason.c_str()));
-            return;
-        }
-
-        auto capacity_lease = g_image_validation_limiter.try_acquire();
-        if (!capacity_lease) {
-            (void)::close(received_fd);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Image validation capacity is busy; retry later"));
-            return;
-        }
-
-        auto* task_data = new (std::nothrow) StartWriteTaskData;
-        if (task_data == nullptr) {
-            (void)::close(received_fd);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Cannot allocate StartWrite task"));
-            return;
-        }
-        task_data->descriptor.reset(received_fd);
-        task_data->capacity_lease = std::move(capacity_lease);
-        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
-        task_data->cancellable = g_cancellable_new();
-        task_data->sender = g_dbus_method_invocation_get_sender(invocation) != nullptr
-            ? g_dbus_method_invocation_get_sender(invocation) : "";
-        task_data->expected_device = expected_device;
-        if (task_data->sender.empty() || task_data->sender.front() != ':' ||
-            task_data->cancellable == nullptr) {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Cannot identify or monitor the D-Bus caller"));
-            return;
-        }
-
-        task_data->disconnect_subscription =
-            iso_flash::subscribe_to_caller_disconnect(
-                connection, task_data->sender.c_str(),
-                task_data->cancellable);
-        if (task_data->disconnect_subscription == 0) {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
-                              "Cannot monitor D-Bus caller disconnect"));
-            return;
-        }
-
-        GTask* task = g_task_new(
-            nullptr, task_data->cancellable, start_write_complete,
-            g_object_ref(invocation));
-        g_task_set_task_data(
-            task, task_data,
-            [](gpointer data) {
-                delete static_cast<StartWriteTaskData*>(data);
-            });
-        g_task_run_in_thread(task, start_write_worker);
-        g_object_unref(task);
-        return;
-    }
-
-    if (g_strcmp0(method_name, "ValidateImage") == 0) {
-        gint32 handle = -1;
-        g_variant_get(parameters, "(h)", &handle);
-        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
-        GUnixFDList* fd_list =
-            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
-        if (fd_list == nullptr) {
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              "D-Bus request did not include a Unix file descriptor list"));
-            return;
-        }
-
-        GError* error = nullptr;
-        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
-        if (received_fd < 0) {
-            const std::string reason = error != nullptr
-                ? error->message : "Cannot receive image file descriptor";
-            if (error != nullptr) g_error_free(error);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              reason.c_str()));
-            return;
-        }
-
-        auto capacity_lease = g_image_validation_limiter.try_acquire();
-        if (!capacity_lease) {
-            (void)::close(received_fd);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              "Image validation capacity is busy; retry later"));
-            return;
-        }
-
-        auto* task_data = new (std::nothrow) ImageValidationTaskData;
-        if (task_data == nullptr) {
-            (void)::close(received_fd);
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              "Cannot allocate image validation task"));
-            return;
-        }
-        task_data->descriptor.reset(received_fd);
-        task_data->capacity_lease = std::move(capacity_lease);
-        task_data->cancellable = g_cancellable_new();
-        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
-        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
-        task_data->sender = sender != nullptr ? sender : "";
-        if (task_data->sender.empty()) {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              "Cannot identify the D-Bus caller for cancellation tracking"));
-            return;
-        }
-
-        task_data->disconnect_subscription =
-            iso_flash::subscribe_to_caller_disconnect(
-                connection, task_data->sender.c_str(),
-                task_data->cancellable);
-        if (task_data->disconnect_subscription == 0) {
-            delete task_data;
-            g_dbus_method_invocation_return_value(
-                invocation,
-                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
-                              "Cannot monitor D-Bus caller disconnect"));
-            return;
-        }
-
-        GTask* task = g_task_new(
-            nullptr, task_data->cancellable, image_validation_complete,
-            g_object_ref(invocation));
-        g_task_set_task_data(
-            task, task_data,
-            [](gpointer data) {
-                delete static_cast<ImageValidationTaskData*>(data);
-            });
-        g_task_run_in_thread(task, image_validation_worker);
-        g_object_unref(task);
-        return;
-    }
-
-    g_dbus_method_invocation_return_error(
-        invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
-        "Method is not implemented");
-}
-
 struct StartWriteTaskData {
     iso_flash::UniqueFd descriptor;
     iso_flash::ImageValidationLimiter::Lease capacity_lease;
@@ -819,6 +527,298 @@ void job_owner_name_owner_changed(GDBusConnection*, const gchar*,
         g_strcmp0(name, old_owner) == 0) {
         (void)g_write_jobs.cancel_owner(name);
     }
+}
+
+void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
+                        const gchar*, const gchar* method_name,
+                        GVariant* parameters, GDBusMethodInvocation* invocation,
+                        gpointer) {
+    if (g_strcmp0(method_name, "InspectTarget") == 0) {
+        guint32 device_major = 0;
+        guint32 device_minor = 0;
+        g_variant_get(parameters, "(uu)", &device_major, &device_minor);
+
+        if (device_major == 0) {
+            return_inspection(invocation, false, 0,
+                              "Invalid block-device major number");
+            return;
+        }
+
+        const dev_t expected = makedev(device_major, device_minor);
+        if (major(expected) != device_major || minor(expected) != device_minor) {
+            return_inspection(invocation, false, 0,
+                              "Block-device major/minor is out of range");
+            return;
+        }
+
+        const std::string device = "/dev/block/" +
+            std::to_string(device_major) + ":" + std::to_string(device_minor);
+        std::string error;
+        std::uint64_t capacity = 0;
+        const bool accepted =
+            inspect_target_read_only(device, error, capacity, expected);
+        return_inspection(invocation, accepted, capacity,
+                          accepted ? std::string{} : error);
+        return;
+    }
+
+    if (g_strcmp0(method_name, "CheckWriteAuthorization") == 0) {
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        auto* task_data = new (std::nothrow) AuthorizationTaskData;
+        if (task_data == nullptr || sender == nullptr || sender[0] != ':') {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(buuts)", FALSE, 0U, 0U,
+                              static_cast<guint64>(0),
+                              "Cannot identify D-Bus caller"));
+            return;
+        }
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        task_data->cancellable = g_cancellable_new();
+        task_data->sender = sender;
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(), task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(buuts)", FALSE, 0U, 0U,
+                              static_cast<guint64>(0),
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
+        }
+        GTask* task = g_task_new(
+            nullptr, task_data->cancellable, authorization_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) { delete static_cast<AuthorizationTaskData*>(data); });
+        g_task_run_in_thread(task, authorization_worker);
+        g_object_unref(task);
+        return;
+    }
+
+    if (g_strcmp0(method_name, "CancelWrite") == 0) {
+        guint64 job_id = 0;
+        g_variant_get(parameters, "(t)", &job_id);
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        const bool cancelled = sender != nullptr &&
+            g_write_jobs.cancel(sender, static_cast<std::uint64_t>(job_id));
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(bs)", cancelled,
+                cancelled ? "" : "Unknown job or caller does not own this job"));
+        return;
+    }
+
+    if (g_strcmp0(method_name, "StartWrite") == 0) {
+#ifndef ISO_FLASH_ENABLE_WRITES
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                          "WRITE_DISABLED: write path is not enabled in this build"));
+        return;
+#endif
+        gint32 handle = -1;
+        guint32 device_major = 0;
+        guint32 device_minor = 0;
+        g_variant_get(parameters, "(huu)", &handle,
+                      &device_major, &device_minor);
+        if (device_major == 0) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Invalid block-device major number"));
+            return;
+        }
+        const dev_t expected_device = makedev(device_major, device_minor);
+        if (major(expected_device) != device_major ||
+            minor(expected_device) != device_minor) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Block-device major/minor is out of range"));
+            return;
+        }
+
+        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
+        GUnixFDList* fd_list =
+            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
+        if (fd_list == nullptr) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "D-Bus request did not include a Unix file descriptor list"));
+            return;
+        }
+
+        GError* error = nullptr;
+        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
+        if (received_fd < 0) {
+            const std::string reason = error != nullptr
+                ? error->message : "Cannot receive ISO file descriptor";
+            if (error != nullptr) g_error_free(error);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              reason.c_str()));
+            return;
+        }
+
+        auto capacity_lease = g_image_validation_limiter.try_acquire();
+        if (!capacity_lease) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Image validation capacity is busy; retry later"));
+            return;
+        }
+
+        auto* task_data = new (std::nothrow) StartWriteTaskData;
+        if (task_data == nullptr) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot allocate StartWrite task"));
+            return;
+        }
+        task_data->descriptor.reset(received_fd);
+        task_data->capacity_lease = std::move(capacity_lease);
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        task_data->cancellable = g_cancellable_new();
+        task_data->sender = g_dbus_method_invocation_get_sender(invocation) != nullptr
+            ? g_dbus_method_invocation_get_sender(invocation) : "";
+        task_data->expected_device = expected_device;
+        if (task_data->sender.empty() || task_data->sender.front() != ':' ||
+            task_data->cancellable == nullptr) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot identify or monitor the D-Bus caller"));
+            return;
+        }
+
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(),
+                task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
+        }
+
+        GTask* task = g_task_new(
+            nullptr, task_data->cancellable, start_write_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) {
+                delete static_cast<StartWriteTaskData*>(data);
+            });
+        g_task_run_in_thread(task, start_write_worker);
+        g_object_unref(task);
+        return;
+    }
+
+    if (g_strcmp0(method_name, "ValidateImage") == 0) {
+        gint32 handle = -1;
+        g_variant_get(parameters, "(h)", &handle);
+        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
+        GUnixFDList* fd_list =
+            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
+        if (fd_list == nullptr) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "D-Bus request did not include a Unix file descriptor list"));
+            return;
+        }
+
+        GError* error = nullptr;
+        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
+        if (received_fd < 0) {
+            const std::string reason = error != nullptr
+                ? error->message : "Cannot receive image file descriptor";
+            if (error != nullptr) g_error_free(error);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              reason.c_str()));
+            return;
+        }
+
+        auto capacity_lease = g_image_validation_limiter.try_acquire();
+        if (!capacity_lease) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Image validation capacity is busy; retry later"));
+            return;
+        }
+
+        auto* task_data = new (std::nothrow) ImageValidationTaskData;
+        if (task_data == nullptr) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot allocate image validation task"));
+            return;
+        }
+        task_data->descriptor.reset(received_fd);
+        task_data->capacity_lease = std::move(capacity_lease);
+        task_data->cancellable = g_cancellable_new();
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        task_data->sender = sender != nullptr ? sender : "";
+        if (task_data->sender.empty()) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot identify the D-Bus caller for cancellation tracking"));
+            return;
+        }
+
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(),
+                task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(btss)", FALSE, static_cast<guint64>(0), "",
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
+        }
+
+        GTask* task = g_task_new(
+            nullptr, task_data->cancellable, image_validation_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) {
+                delete static_cast<ImageValidationTaskData*>(data);
+            });
+        g_task_run_in_thread(task, image_validation_worker);
+        g_object_unref(task);
+        return;
+    }
+
+    g_dbus_method_invocation_return_error(
+        invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+        "Method is not implemented");
 }
 
 const GDBusInterfaceVTable kVTable = {
