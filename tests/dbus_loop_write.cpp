@@ -414,7 +414,12 @@ int main(int argc, char** argv) {
         removal_event.state != "device-lost" ||
         removal_event.error_number != ENODEV ||
         removal_event.completed != 0) {
-        std::cerr << "Detached loop device was not reported as a terminal device-loss event\n";
+        std::cerr << "Detached loop device was not reported as a terminal device-loss event: "
+                  << "finished=" << removal_finished
+                  << " state=" << removal_event.state
+                  << " errno=" << removal_event.error_number
+                  << " bytes=" << removal_event.completed
+                  << " message=" << removal_event.message << '\n';
         return 7;
     }
 
