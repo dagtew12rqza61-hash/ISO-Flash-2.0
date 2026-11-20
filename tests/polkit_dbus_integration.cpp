@@ -93,6 +93,14 @@ void handle_authority_call(GDBusConnection*, const gchar*, const gchar*,
                       g_variant_builder_end(&result_details)));
 }
 
+void authority_name_lost(GDBusConnection*, const gchar*, gpointer) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_failed = true;
+    g_ready = true;
+    g_ready_condition.notify_all();
+    std::cerr << "Synthetic Polkit authority could not own its D-Bus name\\n";
+}
+
 void authority_name_acquired(GDBusConnection*, const gchar*, gpointer) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_ready = true;
@@ -113,6 +121,8 @@ void authority_thread() {
               nullptr, nullptr, &error)
         : nullptr;
     if (connection == nullptr) {
+        std::cerr << "Cannot connect synthetic Polkit authority to test bus: "
+                  << (error != nullptr ? error->message : "unknown D-Bus error") << '\\n';
         std::lock_guard<std::mutex> lock(g_mutex);
         g_failed = true;
         g_ready = true;
@@ -133,6 +143,8 @@ void authority_thread() {
               node->interfaces[0], &vtable, nullptr, nullptr, &error)
         : 0;
     if (registration == 0) {
+        std::cerr << "Cannot register synthetic Polkit authority: "
+                  << (error != nullptr ? error->message : "unknown introspection error") << '\\n';
         std::lock_guard<std::mutex> lock(g_mutex);
         g_failed = true;
         g_ready = true;
@@ -149,7 +161,7 @@ void authority_thread() {
     guint owner = g_bus_own_name_on_connection(
         connection, "org.freedesktop.PolicyKit1",
         G_BUS_NAME_OWNER_FLAGS_NONE, nullptr, authority_name_acquired,
-        nullptr, nullptr);
+        authority_name_lost, nullptr);
     g_main_loop_run(g_loop);
     g_bus_unown_name(owner);
     g_dbus_connection_unregister_object(connection, registration);
