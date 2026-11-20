@@ -207,8 +207,15 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    const int disconnect_image_fd =
+        ::open(argv[4], O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (disconnect_image_fd < 0) {
+        std::cerr << "Cannot open disconnect test ISO read-only\\n";
+        return 2;
+    }
     const int image_fd = ::open(argv[1], O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (image_fd < 0) {
+        ::close(disconnect_image_fd);
         std::cerr << "Cannot open test ISO read-only\n";
         return 2;
     }
@@ -298,14 +305,55 @@ int main(int argc, char** argv) {
     GDBusConnection* disconnect_owner = new_system_bus_connection();
     if (disconnect_owner == nullptr) return 5;
     std::uint64_t disconnected_job_id = 0;
-    if (!start_write(disconnect_owner, image_fd, device_major, device_minor,
-                     disconnected_job_id)) {
+    const auto disconnect_image =
+        iso_flash::validate_image_fd(disconnect_image_fd);
+    if (!disconnect_image.valid ||
+        !start_write(disconnect_owner, disconnect_image_fd,
+                     device_major, device_minor, disconnected_job_id)) {
         g_object_unref(disconnect_owner);
         return 5;
     }
     g_dbus_connection_close_sync(disconnect_owner, nullptr, nullptr);
     g_object_unref(disconnect_owner);
     g_usleep(1500000);
+
+    const int pre_success_backing_fd =
+        ::open(argv[3], O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (pre_success_backing_fd < 0) {
+        ::close(disconnect_image_fd);
+        return 5;
+    }
+    std::vector<unsigned char> zero_check(1024U * 1024U);
+    std::uint64_t zero_offset = 0;
+    bool backing_unchanged = true;
+    while (zero_offset < disconnect_image.snapshot.size_bytes) {
+        const std::uint64_t remaining =
+            disconnect_image.snapshot.size_bytes - zero_offset;
+        const std::size_t requested = static_cast<std::size_t>(
+            remaining < zero_check.size() ? remaining : zero_check.size());
+        const ssize_t count = ::pread(
+            pre_success_backing_fd, zero_check.data(), requested,
+            static_cast<off_t>(zero_offset));
+        if (count <= 0 ||
+            static_cast<std::size_t>(count) != requested) {
+            backing_unchanged = false;
+            break;
+        }
+        for (std::size_t i = 0; i < requested; ++i) {
+            if (zero_check[i] != 0) {
+                backing_unchanged = false;
+                break;
+            }
+        }
+        if (!backing_unchanged) break;
+        zero_offset += static_cast<std::uint64_t>(count);
+    }
+    ::close(pre_success_backing_fd);
+    ::close(disconnect_image_fd);
+    if (!backing_unchanged) {
+        std::cerr << "Disconnected D-Bus client was not cancelled before its first write\\n";
+        return 5;
+    }
 
     std::uint64_t completed_job_id = 0;
     if (!start_write(owner, image_fd, device_major, device_minor,

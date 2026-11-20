@@ -127,6 +127,7 @@ jobs:
           set -euo pipefail
           unset DBUS_SYSTEM_BUS_ADDRESS
           image=$(mktemp)
+          disconnect_image=$(mktemp)
           backing=$(mktemp)
           loop_device=''
           service_pid=''
@@ -136,7 +137,7 @@ jobs:
             if [ -n "$loop_device" ]; then sudo losetup --detach "$loop_device" || true; fi
             sudo rm -f "$rule"
             sudo systemctl restart polkit.service || true
-            rm -f "$image" "$backing"
+            rm -f "$image" "$disconnect_image" "$backing"
           }
           trap cleanup EXIT
           timeout 20s sudo systemctl start dbus.service
@@ -151,6 +152,7 @@ jobs:
           sudo systemctl restart polkit.service
           truncate -s 64M "$backing"
           dd if=/dev/urandom of="$image" bs=1M count=4 status=none
+          dd if=/dev/urandom of="$disconnect_image" bs=1M count=4 status=none
           sudo modprobe loop
           loop_device=$(sudo losetup --find --show "$backing")
           sudo bash -c 'exec "$1"' _ "$PWD/build/engine/iso-flash-service-loop-test" >/tmp/iso-flash-loop-test-service.log 2>&1 &
@@ -165,7 +167,7 @@ jobs:
             cat /tmp/iso-flash-loop-test-service.log || true
             exit 1
           fi
-          build/tests/test_dbus_loop_write "$image" "$loop_device" "$backing"
+          build/tests/test_dbus_loop_write "$image" "$loop_device" "$backing" "$disconnect_image"
       - uses: actions/upload-artifact@v7
         with:
           name: iso-flash-deb-amd64
