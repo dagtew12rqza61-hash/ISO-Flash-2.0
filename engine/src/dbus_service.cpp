@@ -5,14 +5,24 @@
 #include "image_validation_limiter.hpp"
 #include "image_validation_task.hpp"
 #include "polkit_authorization.hpp"
+#include "image_source.hpp"
+#include "write_job_registry.hpp"
+#include "write_operation.hpp"
+#include "write_worker.hpp"
+#include "writable_target.hpp"
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
+#include <atomic>
+#include <cerrno>
 #include <cstdint>
+#include <memory>
 #include <new>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
@@ -20,6 +30,9 @@ namespace {
 constexpr const char* kBusName = "org.iso_flash.Manager1";
 constexpr const char* kObjectPath = "/org/iso_flash/Manager1";
 iso_flash::ImageValidationLimiter g_image_validation_limiter(2);
+iso_flash::WriteJobRegistry g_write_jobs;
+std::atomic<std::uint64_t> g_next_job_id{1};
+std::unordered_map<std::uint64_t, iso_flash::WriteJobSnapshot> g_last_emitted;
 
 constexpr const char* kIntrospectionXml = R"xml(
 <node>
@@ -45,6 +58,33 @@ constexpr const char* kIntrospectionXml = R"xml(
       <arg name="sha256" type="s" direction="out"/>
       <arg name="reason" type="s" direction="out"/>
     </method>
+    <method name="StartWrite">
+      <arg name="image_fd" type="h" direction="in"/>
+      <arg name="major" type="u" direction="in"/>
+      <arg name="minor" type="u" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="job_id" type="t" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
+    <method name="CancelWrite">
+      <arg name="job_id" type="t" direction="in"/>
+      <arg name="accepted" type="b" direction="out"/>
+      <arg name="reason" type="s" direction="out"/>
+    </method>
+    <signal name="Progress">
+      <arg name="job_id" type="t"/>
+      <arg name="state" type="s"/>
+      <arg name="completed_bytes" type="t"/>
+      <arg name="total_bytes" type="t"/>
+    </signal>
+    <signal name="Finished">
+      <arg name="job_id" type="t"/>
+      <arg name="state" type="s"/>
+      <arg name="completed_bytes" type="t"/>
+      <arg name="total_bytes" type="t"/>
+      <arg name="error_number" type="i"/>
+      <arg name="message" type="s"/>
+    </signal>
   </interface>
 </node>
 )xml";
@@ -249,6 +289,128 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
         return;
     }
 
+    if (g_strcmp0(method_name, "CancelWrite") == 0) {
+        guint64 job_id = 0;
+        g_variant_get(parameters, "(t)", &job_id);
+        const gchar* sender = g_dbus_method_invocation_get_sender(invocation);
+        const bool cancelled = sender != nullptr &&
+            g_write_jobs.cancel(sender, static_cast<std::uint64_t>(job_id));
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(bs)", cancelled,
+                cancelled ? "" : "Unknown job or caller does not own this job"));
+        return;
+    }
+
+    if (g_strcmp0(method_name, "StartWrite") == 0) {
+        gint32 handle = -1;
+        guint32 device_major = 0;
+        guint32 device_minor = 0;
+        g_variant_get(parameters, "(huu)", &handle,
+                      &device_major, &device_minor);
+        if (device_major == 0) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Invalid block-device major number"));
+            return;
+        }
+        const dev_t expected_device = makedev(device_major, device_minor);
+        if (major(expected_device) != device_major ||
+            minor(expected_device) != device_minor) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Block-device major/minor is out of range"));
+            return;
+        }
+
+        GDBusMessage* message = g_dbus_method_invocation_get_message(invocation);
+        GUnixFDList* fd_list =
+            message != nullptr ? g_dbus_message_get_unix_fd_list(message) : nullptr;
+        if (fd_list == nullptr) {
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "D-Bus request did not include a Unix file descriptor list"));
+            return;
+        }
+
+        GError* error = nullptr;
+        const int received_fd = g_unix_fd_list_get(fd_list, handle, &error);
+        if (received_fd < 0) {
+            const std::string reason = error != nullptr
+                ? error->message : "Cannot receive ISO file descriptor";
+            if (error != nullptr) g_error_free(error);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              reason.c_str()));
+            return;
+        }
+
+        auto capacity_lease = g_image_validation_limiter.try_acquire();
+        if (!capacity_lease) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Image validation capacity is busy; retry later"));
+            return;
+        }
+
+        auto* task_data = new (std::nothrow) StartWriteTaskData;
+        if (task_data == nullptr) {
+            (void)::close(received_fd);
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot allocate StartWrite task"));
+            return;
+        }
+        task_data->descriptor.reset(received_fd);
+        task_data->capacity_lease = std::move(capacity_lease);
+        task_data->connection = G_DBUS_CONNECTION(g_object_ref(connection));
+        task_data->cancellable = g_cancellable_new();
+        task_data->sender = g_dbus_method_invocation_get_sender(invocation) != nullptr
+            ? g_dbus_method_invocation_get_sender(invocation) : "";
+        task_data->expected_device = expected_device;
+        if (task_data->sender.empty() || task_data->sender.front() != ':' ||
+            task_data->cancellable == nullptr) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot identify or monitor the D-Bus caller"));
+            return;
+        }
+
+        task_data->disconnect_subscription =
+            iso_flash::subscribe_to_caller_disconnect(
+                connection, task_data->sender.c_str(),
+                task_data->cancellable);
+        if (task_data->disconnect_subscription == 0) {
+            delete task_data;
+            g_dbus_method_invocation_return_value(
+                invocation,
+                g_variant_new("(bts)", FALSE, static_cast<guint64>(0),
+                              "Cannot monitor D-Bus caller disconnect"));
+            return;
+        }
+
+        GTask* task = g_task_new(
+            nullptr, task_data->cancellable, start_write_complete,
+            g_object_ref(invocation));
+        g_task_set_task_data(
+            task, task_data,
+            [](gpointer data) {
+                delete static_cast<StartWriteTaskData*>(data);
+            });
+        g_task_run_in_thread(task, start_write_worker);
+        g_object_unref(task);
+        return;
+    }
+
     if (g_strcmp0(method_name, "ValidateImage") == 0) {
         gint32 handle = -1;
         g_variant_get(parameters, "(h)", &handle);
@@ -341,6 +503,331 @@ void handle_method_call(GDBusConnection* connection, const gchar*, const gchar*,
         "Method is not implemented");
 }
 
+struct StartWriteTaskData {
+    iso_flash::UniqueFd descriptor;
+    iso_flash::ImageValidationLimiter::Lease capacity_lease;
+    GDBusConnection* connection = nullptr;
+    GCancellable* cancellable = nullptr;
+    guint disconnect_subscription = 0;
+    std::string sender;
+    dev_t expected_device = 0;
+    iso_flash::ImageFdValidationResult image_validation;
+    std::uint64_t job_id = 0;
+    bool accepted = false;
+    std::string reason;
+
+    ~StartWriteTaskData() {
+        if (connection != nullptr && disconnect_subscription != 0) {
+            g_dbus_connection_signal_unsubscribe(connection, disconnect_subscription);
+        }
+        if (connection != nullptr) g_object_unref(connection);
+        if (cancellable != nullptr) g_object_unref(cancellable);
+    }
+};
+
+void complete_start_write_failure(GTask* task, StartWriteTaskData* data,
+                                  const std::string& reason) {
+    data->accepted = false;
+    data->job_id = 0;
+    data->reason = reason;
+    g_task_return_boolean(task, TRUE);
+}
+
+void start_write_worker(GTask* task, gpointer, gpointer task_data,
+                        GCancellable* cancellable) {
+    auto* data = static_cast<StartWriteTaskData*>(task_data);
+    try {
+        const auto is_cancelled = [cancellable] {
+            return cancellable != nullptr &&
+                   g_cancellable_is_cancelled(cancellable);
+        };
+
+        if (is_cancelled()) {
+            complete_start_write_failure(
+                task, data, "D-Bus caller disconnected before image validation");
+            return;
+        }
+
+        data->image_validation = iso_flash::validate_image_fd(
+            data->descriptor.get(), is_cancelled);
+        if (!data->image_validation.valid) {
+            complete_start_write_failure(
+                task, data, data->image_validation.reason.empty()
+                    ? "ISO descriptor validation failed"
+                    : data->image_validation.reason);
+            return;
+        }
+
+        if (is_cancelled()) {
+            complete_start_write_failure(
+                task, data, "D-Bus caller disconnected before authorization");
+            return;
+        }
+
+        const auto authorization = iso_flash::authorize_dbus_sender(
+            data->connection, data->sender.c_str(), cancellable);
+        if (!authorization.authorized) {
+            complete_start_write_failure(
+                task, data, authorization.reason.empty()
+                    ? "Polkit denied write authorization"
+                    : authorization.reason);
+            return;
+        }
+
+        if (is_cancelled()) {
+            complete_start_write_failure(
+                task, data, "D-Bus caller disconnected during authorization");
+            return;
+        }
+
+        iso_flash::WritableTarget target;
+        std::string target_error;
+        if (!iso_flash::open_writable_target_source(
+                data->expected_device, target, target_error)) {
+            complete_start_write_failure(
+                task, data, target_error.empty()
+                    ? "Target failed safety validation after authorization"
+                    : target_error);
+            return;
+        }
+
+        if (data->image_validation.snapshot.size_bytes >
+            target.snapshot.capacity_bytes) {
+            complete_start_write_failure(
+                task, data, "ISO image is larger than the selected target");
+            return;
+        }
+
+        if (is_cancelled()) {
+            complete_start_write_failure(
+                task, data, "D-Bus caller disconnected before write-job admission");
+            return;
+        }
+
+        const std::uint64_t job_id = g_next_job_id.fetch_add(1);
+        if (job_id == 0) {
+            complete_start_write_failure(task, data, "Write-job identifier space exhausted");
+            return;
+        }
+        const std::string expected_sha256 = data->image_validation.sha256;
+        const std::uint64_t image_size = data->image_validation.snapshot.size_bytes;
+
+        iso_flash::OpenedImage image(
+            std::move(data->descriptor), data->image_validation.snapshot);
+        iso_flash::WriteJob job(job_id, std::move(image), std::move(target));
+
+        auto validation = [expected_sha256](
+            iso_flash::WriteJob& write_job,
+            const iso_flash::WriteWorker::CancelCallback& cancelled) {
+            if (cancelled()) return ECANCELED;
+            const auto current_image = iso_flash::validate_image_fd(
+                write_job.image_fd(), cancelled);
+            if (!current_image.valid) {
+                return current_image.error_number == 0
+                    ? EIO : current_image.error_number;
+            }
+            if (!iso_flash::same_image_snapshot(
+                    write_job.image_snapshot(), current_image.snapshot) ||
+                current_image.sha256 != expected_sha256) {
+                return ESTALE;
+            }
+            if (cancelled()) return ECANCELED;
+            std::string error;
+            if (!iso_flash::revalidate_writable_target_before_first_write(
+                    write_job.writable_target(), error)) {
+                return EBUSY;
+            }
+            return 0;
+        };
+
+        auto operation = [expected_sha256](
+            iso_flash::WriteJob& write_job,
+            const iso_flash::WriteWorker::ProgressCallback& progress,
+            const iso_flash::WriteWorker::CancelCallback& cancelled) {
+            const auto outcome = iso_flash::write_image_and_verify(
+                write_job.image_fd(), write_job.target_fd(),
+                write_job.image_snapshot(),
+                write_job.target_snapshot().capacity_bytes,
+                expected_sha256,
+                [&write_job] {
+                    std::string error;
+                    return iso_flash::revalidate_writable_target_before_first_write(
+                        write_job.writable_target(), error) ? 0 : EBUSY;
+                },
+                progress, cancelled);
+            return iso_flash::WriteOperationResult{
+                outcome.status, outcome.bytes_transferred, outcome.error_number};
+        };
+
+        auto worker = std::make_unique<iso_flash::WriteWorker>(
+            std::move(job), image_size, std::move(validation),
+            std::move(operation));
+        if (!g_write_jobs.add(data->sender, std::move(worker))) {
+            complete_start_write_failure(
+                task, data, "Cannot admit the write job into the service registry");
+            return;
+        }
+
+        if (is_cancelled()) {
+            (void)g_write_jobs.cancel(data->sender, job_id);
+            complete_start_write_failure(
+                task, data, "D-Bus caller disconnected during write-job admission");
+            return;
+        }
+
+        data->job_id = job_id;
+        data->accepted = true;
+        data->reason.clear();
+        g_task_return_boolean(task, TRUE);
+    } catch (const std::exception& exception) {
+        complete_start_write_failure(
+            task, data, std::string("Cannot create write job: ") + exception.what());
+    } catch (...) {
+        complete_start_write_failure(
+            task, data, "Unexpected error while creating write job");
+    }
+}
+
+void start_write_complete(GObject*, GAsyncResult* async_result,
+                          gpointer user_data) {
+    auto* invocation = G_DBUS_METHOD_INVOCATION(user_data);
+    GTask* task = G_TASK(async_result);
+    auto* data = static_cast<StartWriteTaskData*>(g_task_get_task_data(task));
+    GError* error = nullptr;
+    if (!g_task_propagate_boolean(task, &error)) {
+        const std::string reason = error != nullptr
+            ? error->message : "Asynchronous StartWrite task failed";
+        if (error != nullptr) g_error_free(error);
+        g_dbus_method_invocation_return_value(
+            invocation, g_variant_new("(bts)", FALSE,
+                                      static_cast<guint64>(0), reason.c_str()));
+    } else {
+        g_dbus_method_invocation_return_value(
+            invocation,
+            g_variant_new("(bts)", data->accepted,
+                          static_cast<guint64>(data->job_id),
+                          data->reason.c_str()));
+    }
+    g_object_unref(invocation);
+}
+
+const char* write_state_name(iso_flash::WriteJobState state) {
+    switch (state) {
+    case iso_flash::WriteJobState::Queued: return "queued";
+    case iso_flash::WriteJobState::Validating: return "validating";
+    case iso_flash::WriteJobState::Writing: return "writing";
+    case iso_flash::WriteJobState::Cancelling: return "cancelling";
+    case iso_flash::WriteJobState::Completed: return "completed";
+    case iso_flash::WriteJobState::Failed: return "failed";
+    case iso_flash::WriteJobState::DeviceLost: return "device-lost";
+    case iso_flash::WriteJobState::Cancelled: return "cancelled";
+    }
+    return "unknown";
+}
+
+std::string write_finished_message(const iso_flash::WriteJobSnapshot& snapshot) {
+    if (snapshot.state == iso_flash::WriteJobState::Completed) {
+        return "Image written, synced, and verified by SHA-256 read-back";
+    }
+    if (snapshot.state == iso_flash::WriteJobState::DeviceLost) {
+        return "Target device was lost; the device may contain a partial image";
+    }
+    if (snapshot.state == iso_flash::WriteJobState::Cancelled) {
+        return snapshot.completed_bytes == 0
+            ? "Write cancelled before any bytes were written"
+            : "Write cancelled; the target may contain a partial image";
+    }
+    if (snapshot.state == iso_flash::WriteJobState::Failed) {
+        return std::string("Write or verification failed: ") +
+            g_strerror(snapshot.error_number) +
+            (snapshot.completed_bytes == 0
+                ? "" : "; the target may contain a partial image");
+    }
+    return "Write job finished";
+}
+
+gboolean publish_write_job_updates(gpointer user_data) {
+    auto* connection = G_DBUS_CONNECTION(user_data);
+    const auto jobs = g_write_jobs.snapshots();
+    for (const auto& job : jobs) {
+        const auto previous = g_last_emitted.find(job.id);
+        const bool changed = previous == g_last_emitted.end() ||
+            previous->second.state != job.snapshot.state ||
+            previous->second.completed_bytes != job.snapshot.completed_bytes ||
+            previous->second.total_bytes != job.snapshot.total_bytes ||
+            previous->second.error_number != job.snapshot.error_number;
+
+        if (iso_flash::is_terminal(job.snapshot.state)) {
+            if (previous == g_last_emitted.end() ||
+                !iso_flash::is_terminal(previous->second.state)) {
+                GError* error = nullptr;
+                (void)g_dbus_connection_emit_signal(
+                    connection, job.owner.c_str(), kObjectPath,
+                    "org.iso_flash.Manager1", "Finished",
+                    g_variant_new("(tsttis)",
+                        static_cast<guint64>(job.id),
+                        write_state_name(job.snapshot.state),
+                        static_cast<guint64>(job.snapshot.completed_bytes),
+                        static_cast<guint64>(job.snapshot.total_bytes),
+                        job.snapshot.error_number,
+                        write_finished_message(job.snapshot).c_str()),
+                    &error);
+                if (error != nullptr) g_error_free(error);
+            }
+        } else if (changed) {
+            GError* error = nullptr;
+            (void)g_dbus_connection_emit_signal(
+                connection, job.owner.c_str(), kObjectPath,
+                "org.iso_flash.Manager1", "Progress",
+                g_variant_new("(tstt)",
+                    static_cast<guint64>(job.id),
+                    write_state_name(job.snapshot.state),
+                    static_cast<guint64>(job.snapshot.completed_bytes),
+                    static_cast<guint64>(job.snapshot.total_bytes)),
+                &error);
+            if (error != nullptr) g_error_free(error);
+        }
+        g_last_emitted[job.id] = job.snapshot;
+    }
+
+    (void)g_write_jobs.reap_terminal();
+    for (auto it = g_last_emitted.begin(); it != g_last_emitted.end();) {
+        if (!g_write_jobs.snapshot("", it->first).has_value()) {
+            bool still_present = false;
+            for (const auto& job : jobs) {
+                if (job.id == it->first) {
+                    still_present = true;
+                    break;
+                }
+            }
+            if (still_present) {
+                it = g_last_emitted.erase(it);
+            } else {
+                ++it;
+            }
+        } else {
+            ++it;
+        }
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+void job_owner_name_owner_changed(GDBusConnection*, const gchar*,
+                                  const gchar*, const gchar*,
+                                  const gchar*, GVariant* parameters,
+                                  gpointer) {
+    const gchar* name = nullptr;
+    const gchar* old_owner = nullptr;
+    const gchar* new_owner = nullptr;
+    g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
+    if (name != nullptr && name[0] == ':' &&
+        old_owner != nullptr && old_owner[0] != '\0' &&
+        new_owner != nullptr && new_owner[0] == '\0' &&
+        g_strcmp0(name, old_owner) == 0) {
+        (void)g_write_jobs.cancel_owner(name);
+    }
+}
+
 const GDBusInterfaceVTable kVTable = {
     handle_method_call,
     nullptr,
@@ -393,10 +880,32 @@ int main() {
         return 1;
     }
 
+    const guint owner_watch_subscription =
+        g_dbus_connection_signal_subscribe(
+            connection, "org.freedesktop.DBus", "org.freedesktop.DBus",
+            "NameOwnerChanged", "/org/freedesktop/DBus", nullptr,
+            G_DBUS_SIGNAL_FLAGS_NONE, job_owner_name_owner_changed,
+            nullptr, nullptr);
+    if (owner_watch_subscription == 0) {
+        g_printerr("Cannot monitor D-Bus owners for write-job cancellation\\n");
+        g_bus_unown_name(owner_id);
+        g_dbus_connection_unregister_object(connection, registration_id);
+        g_object_unref(connection);
+        g_dbus_node_info_unref(introspection);
+        return 1;
+    }
+
+    const guint update_timer = g_timeout_add(
+        100, publish_write_job_updates, g_object_ref(connection));
     GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
     g_main_loop_run(loop);
 
     g_main_loop_unref(loop);
+    if (update_timer != 0) g_source_remove(update_timer);
+    g_dbus_connection_signal_unsubscribe(
+        connection, owner_watch_subscription);
+    g_write_jobs.shutdown();
+    g_last_emitted.clear();
     g_bus_unown_name(owner_id);
     g_dbus_connection_unregister_object(connection, registration_id);
     g_object_unref(connection);
