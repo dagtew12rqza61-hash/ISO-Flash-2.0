@@ -112,8 +112,7 @@ private:
             }
 
             const WriteJobSnapshot current = control_.snapshot();
-            if (result.bytes_transferred > current.total_bytes ||
-                result.bytes_transferred < current.completed_bytes) {
+            if (result.bytes_transferred > current.total_bytes) {
                 control_.finish_failed(EIO);
                 return;
             }
