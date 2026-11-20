@@ -9,7 +9,7 @@ int main() {
         const std::string actual = iso_flash::describe_device_error("Device operation failed", code);
         if (actual.find(expected) == std::string::npos ||
             actual.find("errno=" + std::to_string(code)) == std::string::npos) {
-            std::cerr << "Unexpected diagnostic for errno " << code << ": " << actual << '\\n';
+            std::cerr << "Unexpected diagnostic for errno " << code << ": " << actual << '\n';
             return false;
         }
         return true;
