@@ -175,16 +175,18 @@ inline constexpr int writable_target_open_flags() noexcept {
     return O_RDWR | O_CLOEXEC | O_EXCL | O_NOFOLLOW | O_NONBLOCK;
 }
 
-template <typename ValidateFunction>
-inline bool open_writable_target_source(dev_t expected_device,
-                                        WritableTarget& target,
-                                        std::string& error,
-                                        ValidateFunction&& validate_device) {
+template <typename ResolveFunction, typename InspectFunction,
+          typename OpenFunction, typename SnapshotFunction,
+          typename ValidateFunction>
+inline bool open_writable_target_source_with(
+    dev_t expected_device, WritableTarget& target, std::string& error,
+    ResolveFunction&& resolve_function, InspectFunction&& inspect_function,
+    OpenFunction&& open_function, SnapshotFunction&& snapshot_function,
+    ValidateFunction&& validate_device) {
     target = WritableTarget{};
     std::string node_path;
     fs::path sysfs_identity;
-    if (!resolve_kernel_device_node(expected_device, node_path,
-                                    sysfs_identity, error)) {
+    if (!resolve_function(expected_device, node_path, sysfs_identity, error)) {
         return false;
     }
 
@@ -193,13 +195,13 @@ inline bool open_writable_target_source(dev_t expected_device,
         error = "Target failed preliminary safety inspection: " + error;
         return false;
     }
-    if (!inspect_block_node_path(node_path, expected_number, error)) {
+    if (!inspect_function(node_path, expected_number, error)) {
         return false;
     }
 
     int raw_fd = -1;
     do {
-        raw_fd = ::open(node_path.c_str(), writable_target_open_flags());
+        raw_fd = open_function(node_path.c_str(), writable_target_open_flags());
     } while (raw_fd < 0 && errno == EINTR);
     if (raw_fd < 0) {
         const int saved_error = errno;
@@ -208,30 +210,22 @@ inline bool open_writable_target_source(dev_t expected_device,
     }
     UniqueFd descriptor(raw_fd);
 
-    const auto fstat_function = [](int fd, struct stat* metadata) {
-        return ::fstat(fd, metadata);
-    };
-    const auto ioctl_function = [](int fd, unsigned long request, void* value) {
-        return ::ioctl(fd, request, value);
-    };
-
     DeviceSnapshot admitted{};
-    if (!read_device_snapshot(descriptor.get(), admitted, error,
-                              fstat_function, ioctl_function)) {
+    if (!snapshot_function(descriptor.get(), admitted, error)) {
         return false;
     }
     if (admitted.device_number != expected_number || admitted.read_only) {
         error = "Opened writable descriptor does not match the requested writable device";
         return false;
     }
-    if (!inspect_block_node_path(node_path, expected_number, error)) {
+    if (!inspect_function(node_path, expected_number, error)) {
         return false;
     }
 
     std::string current_node_path;
     fs::path current_sysfs_identity;
-    if (!resolve_kernel_device_node(expected_device, current_node_path,
-                                    current_sysfs_identity, error) ||
+    if (!resolve_function(expected_device, current_node_path,
+                          current_sysfs_identity, error) ||
         current_node_path != node_path || current_sysfs_identity != sysfs_identity) {
         error = "Sysfs device identity changed during writable admission";
         return false;
@@ -242,8 +236,7 @@ inline bool open_writable_target_source(dev_t expected_device,
     }
 
     DeviceSnapshot current{};
-    if (!read_device_snapshot(descriptor.get(), current, error,
-                              fstat_function, ioctl_function) ||
+    if (!snapshot_function(descriptor.get(), current, error) ||
         !same_writable_device(admitted, current)) {
         error = "Writable target identity, capacity, or state changed during admission";
         return false;
@@ -262,6 +255,35 @@ inline bool open_writable_target_source(dev_t expected_device,
     return true;
 }
 
+template <typename ValidateFunction>
+inline bool open_writable_target_source(dev_t expected_device,
+                                        WritableTarget& target,
+                                        std::string& error,
+                                        ValidateFunction&& validate_device) {
+    return open_writable_target_source_with(
+        expected_device, target, error,
+        [](dev_t number, std::string& path, fs::path& identity,
+           std::string& message) {
+            return resolve_kernel_device_node(number, path, identity, message);
+        },
+        [](const std::string& path, std::uint64_t number,
+           std::string& message) {
+            return inspect_block_node_path(path, number, message);
+        },
+        [](const char* path, int flags) { return ::open(path, flags); },
+        [](int fd, DeviceSnapshot& snapshot, std::string& message) {
+            const auto fstat_function = [](int value, struct stat* metadata) {
+                return ::fstat(value, metadata);
+            };
+            const auto ioctl_function = [](int value, unsigned long request,
+                                           void* data) {
+                return ::ioctl(value, request, data);
+            };
+            return read_device_snapshot(fd, snapshot, message,
+                                        fstat_function, ioctl_function);
+        },
+        std::forward<ValidateFunction>(validate_device));
+}
 
 inline bool revalidate_writable_target_before_first_write(
     const WritableTarget& target, std::string& error) {
