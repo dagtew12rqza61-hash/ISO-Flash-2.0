@@ -1,4 +1,6 @@
 find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
 
 add_test(
   NAME writer_refuses_destructive_operation
