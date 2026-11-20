@@ -106,6 +106,45 @@ int main() {
     }
 
     {
+        std::promise<void> entered;
+        std::promise<void> release;
+        const auto release_signal = release.get_future().share();
+        iso_flash::WriteWorker worker(
+            make_job(11), 100,
+            [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },
+            [&entered, release_signal](
+                iso_flash::WriteJob&,
+                const iso_flash::WriteWorker::ProgressCallback& progress,
+                const iso_flash::WriteWorker::CancelCallback& cancelled) {
+                if (!progress(20)) {
+                    return iso_flash::WriteOperationResult{
+                        iso_flash::WriteIoStatus::Failed, 0, EIO};
+                }
+                entered.set_value();
+                release_signal.wait();
+                return iso_flash::WriteOperationResult{
+                    cancelled() ? iso_flash::WriteIoStatus::Cancelled
+                                : iso_flash::WriteIoStatus::Completed,
+                    37, 0};
+            });
+        if (!worker.start()) {
+            std::cerr << "Partial-cancel worker failed to start\\n";
+            return 1;
+        }
+        entered.get_future().wait();
+        if (!worker.cancel()) {
+            std::cerr << "Partial-cancel worker rejected cancellation\\n";
+            return 1;
+        }
+        release.set_value();
+        worker.join();
+        if (!expect_state(worker.snapshot(), iso_flash::WriteJobState::Cancelled, 37)) {
+            std::cerr << "Cancellation lost bytes written inside an interrupted chunk\\n";
+            return 1;
+        }
+    }
+
+    {
         iso_flash::WriteWorker worker(
             make_job(3), 100,
             [](iso_flash::WriteJob&, const iso_flash::WriteWorker::CancelCallback&) { return 0; },

@@ -245,6 +245,18 @@ struct StartWriteTaskData {
     }
 };
 
+int target_validation_error_number(const std::string& error) {
+    if (error.find("No such device") != std::string::npos ||
+        error.find("No such file or directory") != std::string::npos ||
+        error.find("Cannot resolve") != std::string::npos ||
+        error.find("changed") != std::string::npos ||
+        error.find("disappeared") != std::string::npos ||
+        error.find("no verified USB transport") != std::string::npos) {
+        return ENODEV;
+    }
+    return EBUSY;
+}
+
 void complete_start_write_failure(GTask* task, StartWriteTaskData* data,
                                   const std::string& reason) {
     data->accepted = false;
@@ -355,7 +367,7 @@ void start_write_worker(GTask* task, gpointer, gpointer task_data,
             std::string error;
             if (!iso_flash::revalidate_writable_target_before_first_write(
                     write_job.writable_target(), error)) {
-                return EBUSY;
+                return target_validation_error_number(error);
             }
             return 0;
         };
@@ -381,7 +393,8 @@ void start_write_worker(GTask* task, gpointer, gpointer task_data,
                 [&write_job] {
                     std::string error;
                     return iso_flash::revalidate_writable_target_before_first_write(
-                        write_job.writable_target(), error) ? 0 : EBUSY;
+                        write_job.writable_target(), error)
+                        ? 0 : target_validation_error_number(error);
                 },
                 progress, cancelled);
             return iso_flash::WriteOperationResult{

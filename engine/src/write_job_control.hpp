@@ -48,7 +48,8 @@ public:
 
     bool update_progress(std::uint64_t completed_bytes) {
         const std::lock_guard<std::mutex> lock(mutex_);
-        return state_ == WriteJobState::Writing &&
+        return (state_ == WriteJobState::Writing ||
+                state_ == WriteJobState::Cancelling) &&
                progress_.update(completed_bytes);
     }
 

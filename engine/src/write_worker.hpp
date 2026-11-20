@@ -142,6 +142,14 @@ private:
                 control_.finish_failed(EIO);
                 return;
             }
+            const std::uint64_t final_progress =
+                result.bytes_transferred > current.completed_bytes
+                    ? result.bytes_transferred : current.completed_bytes;
+            if (final_progress > current.completed_bytes &&
+                !control_.update_progress(final_progress)) {
+                control_.finish_failed(EIO);
+                return;
+            }
 
             if (result.status == WriteIoStatus::Cancelled) {
                 if (!control_.cancel_requested()) {
