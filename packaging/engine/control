@@ -1,0 +1,9 @@
+Package: iso-flash-engine
+Version: 2.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: ISO Flash Project
+Depends: libc6, libstdc++6
+Description: ISO Flash USB image writer engine
+ Separate low-level Linux block-device image writer.
