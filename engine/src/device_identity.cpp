@@ -68,15 +68,10 @@ bool inspect_target_read_only(const std::string& device, std::string& error,
         error = "Cannot revalidate target identity after opening: " + error;
         ok = false;
     }
-    if (ok) {
-        const iso_flash::DeviceSnapshot path_snapshot{
-            static_cast<std::uint64_t>(path_after.st_rdev),
-            opened_after.capacity_bytes, opened_after.read_only};
-        if (!iso_flash::same_writable_device(original, path_snapshot) ||
-            !iso_flash::same_writable_device(original, opened_after)) {
-            error = "Target identity, capacity, or writable state changed during validation";
-            ok = false;
-        }
+    if (ok && !iso_flash::same_opened_target(
+                  original, static_cast<std::uint64_t>(path_after.st_rdev), opened_after)) {
+        error = "Target identity, capacity, or writable state changed during validation";
+        ok = false;
     }
 
     if (!ok) {
