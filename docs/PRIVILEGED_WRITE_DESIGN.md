@@ -8,7 +8,7 @@ The preferred boundary is a small system D-Bus service, not a setuid binary and 
 
 ## D-Bus interface contract
 
-The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml). It defines read-only target inspection, a write request carrying an image Unix-FD, job cancellation, and progress/completion signals. This XML is a protocol contract only; no D-Bus service currently exports it. `StartWrite` must not be exposed until the service-side Polkit check, descriptor-bound safety checks, and write-job ownership are implemented.
+The initial typed interface is described in [DBUS_INTERFACE.xml](DBUS_INTERFACE.xml). It defines read-only target inspection, a write request carrying an image Unix-FD, job cancellation, and progress/completion signals. The running implementation currently exports only the read-only `InspectTarget` method documented in [DBUS_READ_ONLY_SERVICE.md](DBUS_READ_ONLY_SERVICE.md). The write, cancellation, and progress entries in the XML remain future protocol specifications. `StartWrite` must not be exposed until the service-side Polkit check, descriptor-bound safety checks, and write-job ownership are implemented.
 
 ## Proposed request protocol
 
@@ -38,4 +38,4 @@ The service should be installed root-owned and non-writable by unprivileged user
 
 ## Current implementation status
 
-This document is an architecture specification only. The D-Bus service, Polkit policy, descriptor-passing protocol, writable device open, and physical write path are not implemented. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
+The read-only D-Bus service and systemd activation are implemented. The Polkit write policy, descriptor-passing write request, writable device open, asynchronous job manager, and physical write path are not implemented. The current engine supports read-only target inspection; `--write` remains deliberately disabled.
